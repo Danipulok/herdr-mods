@@ -241,7 +241,13 @@ export default class Spaces extends View {
       // The rules follow the start folder until they're given rules of their own.
       this.mirror = !f.match || f.match === f.path;
       this.path.on("change", (_e, cx) => { if (this.mirror) { this.match.set_value(this.path.value()); cx.notify(); } });
-      this.match.on("change", () => { this.mirror = this.match.value() === this.path.value(); });
+      this.match.on("change", (_e, cx) => { this.mirror = this.match.value() === this.path.value(); if (this.typing) this.suggest(cx); });
+      // Only typed text asks: the rules following the start folder do not.
+      this.typing = false;
+      this.hints = [];
+      this.hintSeq = 0;
+      this.match.on("focus", () => { this.typing = true; });
+      this.match.on("blur", () => { this.typing = false; });
       // The name follows the start folder's last part while it's still the default
       // (or already that part); typing a name of its own stops that.
       const named = (n) => !n || n === NEW_FOLDER || n === lastPart(this.path.value());
@@ -600,6 +606,36 @@ export default class Spaces extends View {
     if (this.nameMirror && part && part !== this.name.value()) this.name.set_value(part);
   }
 
+  // The rules' last part, completed: a path from the folder's machine, a bare
+  // name from the folders the open spaces there work in. A slower answer to an
+  // older value is dropped.
+  suggest(cx) {
+    const seq = ++this.hintSeq, { machine } = this.editing, part = this.match.value().split(",").at(-1).trim();
+    if (!part) { this.hints = []; cx.notify(); return; }
+    if (!/[\\/~]/.test(part)) {
+      const ps = panes(), mine = spaces().filter((s) => (s.machine ?? null) === machine);
+      this.hints = [...new Set(mine.map((s) => lastPart(place(s, ps) ?? "")))].filter((n) => n && n !== part && n.startsWith(part)).slice(0, 8);
+      cx.notify();
+      return;
+    }
+    cx.spawn(async (cx) => {
+      const full = await expand(machine, part);
+      const r = await exec("sh", ["-c", 'ls -d -- "$1"*/ 2>/dev/null | head -8', "sh", full], { on: machine }).catch(() => null);
+      if (seq !== this.hintSeq) return;
+      const home = homes[key(machine)], tilde = (d) => part.startsWith("~") && home && d.startsWith(home) ? `~${d.slice(home.length)}` : d;
+      this.hints = (r?.stdout ?? "").split("\n").filter(Boolean).map((d) => tilde(d.replace(/\/+$/, ""))).filter((d) => d !== part);
+      cx.notify();
+    });
+  }
+
+  takeHint(hint, cx) {
+    const parts = this.match.value().split(",");
+    parts[parts.length - 1] = (parts.length > 1 ? " " : "") + hint;
+    this.match.set_value(parts.join(","));
+    this.match.focus();
+    this.suggest(cx);
+  }
+
   // The system's folder picker, for this computer: home written as "~".
   choose(cx) {
     cx.spawn(async (cx) => {
@@ -760,6 +796,9 @@ export default class Spaces extends View {
         machine ? null : button("folder-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
       .child(field("Collect spaces from", this.match,
         "Spaces working in these folders join this one. Comma-separated: a folder name like wbso-ai, or a path like ~/code/client-*."))
+      .when(this.hints.length > 0, (el) => el.child(v_flex().id("folder-hints").mt(-10).p(4).gap(1).rounded(8).border_1().border_color(t.input).bg(t.background)
+        .children(this.hints.map((h, i) => div().id(`folder-hint-${i}`).h(24).px(8).flex().items_center().rounded(5).cursor_pointer()
+          .text_size(12.5).hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.takeHint(h, cx)).child(h)))))
       .child(h_flex().pt(4).gap(8).justify_end()
         .child(button("folder-cancel", "Cancel", false, () => closeOverlay(overlay)))
         .child(button("folder-save", "Save", true, () => this.saveFolder())));
