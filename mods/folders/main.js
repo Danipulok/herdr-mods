@@ -23,7 +23,7 @@ import { spaces, agents, machines, panes, run, openOverlay, closeOverlay, props,
 const FILE = "~/.config/herdr-space-folders.json";
 const key = (machine) => machine ?? "";
 const all = () => shared("space-folders") ?? {};
-const folders = (machine) => all()[key(machine)] ?? { list: [], of: {}, archive: [] };
+const folders = (machine) => all()[key(machine)] ?? { list: [], of: {}, archive: [], colors: {} };
 const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
 const URGENT = ["blocked", "done", "working"];
 
@@ -31,7 +31,7 @@ async function readFolders(machine) {
   const r = await exec("sh", ["-c", `cat ${FILE} 2>/dev/null`], { on: machine });
   try {
     const d = JSON.parse(r.stdout);
-    return { list: d.list ?? [], of: d.of ?? {}, archive: d.archive ?? [], at: d.at ?? 0 };
+    return { list: d.list ?? [], of: d.of ?? {}, archive: d.archive ?? [], colors: d.colors ?? {}, at: d.at ?? 0 };
   } catch { return null; }
 }
 
@@ -162,7 +162,7 @@ function machineFolder(m, rows, ps) {
 }
 
 function saveFolders(machine, data) {
-  const next = { list: data.list, of: data.of, archive: data.archive ?? [], at: Date.now() };
+  const next = { list: data.list, of: data.of, archive: data.archive ?? [], colors: data.colors ?? folders(machine).colors ?? {}, at: Date.now() };
   setShared("space-folders", { ...all(), [key(machine)]: next });
   exec("sh", ["-c", `mkdir -p ~/.config && printf '%s\\n' "$1" > ${FILE}.tmp && mv ${FILE}.tmp ${FILE}`, "sh", JSON.stringify(next)], { on: machine })
     .catch(() => null);
@@ -228,9 +228,10 @@ const lastPart = (p) => {
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, archivedMenu, edit, machine = null, fresh = false, overlay } = props() ?? {};
+    const { folderMenu, archivedMenu, spaceColor, edit, machine = null, fresh = false, overlay } = props() ?? {};
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (archivedMenu) { this.archivedMenu = { id: archivedMenu, machine, overlay }; return; }
+    if (spaceColor) { this.spaceColor = { id: spaceColor, machine, overlay }; return; }
     if (edit) {
       const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
       this.editing = { id: edit, machine, fresh, overlay };
@@ -442,6 +443,10 @@ export default class Spaces extends View {
         }
       } catch { this.watching.delete(repo); }
     });
+  }
+
+  colorMenu(w) {
+    openOverlay({ mod: "folders", kind: "popup", width: 236, height: 44, props: { spaceColor: localId(w), machine: w.machine ?? null } });
   }
 
   menu(w) {
@@ -689,6 +694,26 @@ export default class Spaces extends View {
       }));
   }
 
+  // "auto" drops the choice, and the least used colour is picked again.
+  spaceColorView(t) {
+    const { id, machine, overlay } = this.spaceColor, f = folders(machine), current = f.colors?.[id] ?? null;
+    const pick = (color) => {
+      const { [id]: _, ...colors } = f.colors ?? {};
+      saveFolders(machine, { ...f, colors: color ? { ...colors, [id]: color } : colors });
+      if (!color) {
+        const { [machine ? `${machine}/${id}` : id]: _gone, ...rest } = shared("space.colors") ?? {};
+        setShared("space.colors", rest);
+      }
+      closeOverlay(overlay);
+    };
+    const swatch = (color) => div().id(`space-color-${color ?? "auto"}`).size(20).flex_none().rounded(5).cursor_pointer()
+      .bg(color ? MARK[color] : t.input).border_2().border_color(color === current ? t.foreground : t.popover)
+      .hover((s) => s.border_color(t.muted)).on_click(() => pick(color))
+      .when(!color, (el) => el.flex().items_center().justify_center().text_size(9).text_color(t.muted).child("A"));
+    return h_flex().id("space-color-menu").size_full().px(10).gap(8).items_center().bg(t.popover)
+      .children([...Object.keys(MARK), null].map(swatch));
+  }
+
   archivedMenuView(t) {
     const { id, machine, overlay } = this.archivedMenu;
     const entry = (folders(machine).archive ?? []).find((x) => x.id === id);
@@ -917,7 +942,11 @@ export default class Spaces extends View {
             .role("button").accessibility_label(folded ? "Expand worktrees" : "Collapse worktrees")
             .on_mouse_down("left", stop).on_click(toggle)
             .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(12).text_color(t.foreground))))
-          .when(!tree && !(kids > 0 && this.hovered === w.id), el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(11).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(!tree && !(kids > 0 && this.hovered === w.id), el => el.child(h_flex().id(`space-color-${w.id}`).size(18).flex_none().rounded(5).bg(fill)
+            .items_center().justify_center().text_size(11).font_bold().text_color("#ffffff").cursor_pointer()
+            .role("button").accessibility_label(`Colour of ${w.name}`).on_mouse_down("left", stop)
+            .on_click((_e, cx) => { cx.stop_propagation(); this.colorMenu(w); })
+            .child([...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().min_w(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
           .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
           .when(folded, el => el.child(div().id(`space-count-${w.id}`).h(20).min_w(20).px(4).flex_none().flex().items_center().justify_center().rounded(4)
@@ -999,6 +1028,7 @@ export default class Spaces extends View {
     const t = theme();
     if (this.folderMenu) return this.folderMenuView(t);
     if (this.archivedMenu) return this.archivedMenuView(t);
+    if (this.spaceColor) return this.spaceColorView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
@@ -1007,6 +1037,8 @@ export default class Spaces extends View {
     const kept = Object.fromEntries(Object.entries(shared("space.colors") ?? {}).filter(([id]) => ids.has(id)));
     let changed = Object.keys(kept).length !== Object.keys(shared("space.colors") ?? {}).length;
     for (const p of sp) {
+      const chosen = folders(p.machine ?? null).colors?.[localId(p)];
+      if (chosen && kept[p.id] !== chosen) { kept[p.id] = chosen; changed = true; }
       if (kept[p.id] || p.name === "~") continue;
       const uses = c => Object.values(kept).filter(v => v === c).length;
       kept[p.id] = palette.reduce((best, c) => uses(c) < uses(best) ? c : best);
