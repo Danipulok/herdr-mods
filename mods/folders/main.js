@@ -692,12 +692,13 @@ export default class Spaces extends View {
   archivedMenuView(t) {
     const { id, machine, overlay } = this.archivedMenu;
     const entry = (folders(machine).archive ?? []).find((x) => x.id === id);
-    const item = (key, label, icon, action) => h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
+    const item = (key, label, icon, action, tone = null) => h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
+      .when(Boolean(tone), (el) => el.text_color(tone))
       .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); if (entry) action(); })
-      .child(svg(icon).size(13).flex_none().text_color(t.muted)).child(label);
+      .child(svg(icon).size(13).flex_none().text_color(tone ?? t.muted)).child(label);
     return v_flex().id("archived-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(item("archived-restore", "Restore", "mods/folders/archive-restore.svg", () => restore(machine, entry)))
-      .child(item("archived-delete", "Delete", "mods/folders/trash.svg", () => forget(machine, id)));
+      .child(item("archived-delete", "Delete", "mods/folders/trash.svg", () => forget(machine, id), t.ansi1));
   }
 
   editView(t) {
