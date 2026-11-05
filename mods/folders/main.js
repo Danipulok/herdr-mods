@@ -87,6 +87,13 @@ async function archive(s, folder) {
   run("space.close", { id: s.id, confirmed: true });
 }
 
+// `--ff-only`: a branch that moved apart is left to a person, and git says why.
+async function pull(s) {
+  const r = await exec("git", ["pull", "--ff-only"], { cwd: place(s, panes()), on: s.machine ?? null }).catch((er) => ({ code: 1, stdout: "", stderr: String(er) }));
+  const said = (r.code === 0 ? r.stdout : r.stderr || r.stdout).trim().split("\n").at(-1) ?? "";
+  notify({ title: r.code === 0 ? `Pulled ${s.name}` : `Can't pull ${s.name}`, body: said, level: r.code === 0 ? "success" : "error" });
+}
+
 // Back in its folder, each tab in its folder and its agent resumed. A folder
 // that's gone (a removed worktree) stops it, and the entry stays.
 async function restore(machine, entry) {
@@ -228,10 +235,10 @@ const lastPart = (p) => {
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, archivedMenu, spaceColor, edit, machine = null, fresh = false, overlay } = props() ?? {};
+    const { folderMenu, archivedMenu, spaceMenu, git = null, folder = null, edit, machine = null, fresh = false, overlay } = props() ?? {};
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (archivedMenu) { this.archivedMenu = { id: archivedMenu, machine, overlay }; return; }
-    if (spaceColor) { this.spaceColor = { id: spaceColor, machine, overlay }; return; }
+    if (spaceMenu) { this.spaceMenu = { id: spaceMenu, machine, git, folder, overlay }; return; }
     if (edit) {
       const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
       this.editing = { id: edit, machine, fresh, overlay };
@@ -465,13 +472,10 @@ export default class Spaces extends View {
     }
   }
 
-  colorMenu(w) {
-    openOverlay({ mod: "folders", kind: "popup", width: 236, height: 44, props: { spaceColor: localId(w), machine: w.machine ?? null } });
-  }
-
-  menu(w) {
+  menu(w, folder) {
+    const g = this.git[where(w, panes())] ?? null;
     // A popup is as tall as its items; height is only the most.
-    openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id: w.id } } });
+    openOverlay({ mod: "folders", kind: "popup", width: 236, height: 300, props: { spaceMenu: w.id, machine: w.machine ?? null, git: g ? (g.linked ? "linked" : "main") : null, folder } });
   }
 
   // ---- folders ----
@@ -744,24 +748,41 @@ export default class Spaces extends View {
       }));
   }
 
-  // "auto" drops the choice, and the least used colour is picked again.
-  spaceColorView(t) {
-    const { id, machine, overlay } = this.spaceColor, f = folders(machine), current = f.colors?.[id] ?? null;
-    const pick = (color) => {
-      const { [id]: _, ...colors } = f.colors ?? {};
-      saveFolders(machine, { ...f, colors: color ? { ...colors, [id]: color } : colors });
+  // Herdr's own space menu (the `menu` mod) with the space's colour, git pull and
+  // archive added. A colour of "auto" drops the choice, and the least used one
+  // is picked again.
+  spaceMenuView(t) {
+    const { id, machine, git, folder, overlay } = this.spaceMenu, s = spaces().find((x) => x.id === id);
+    if (!s) return div();
+    const f = folders(machine), colorId = localId(s), current = f.colors?.[colorId] ?? null;
+    const paint = (color) => {
+      const { [colorId]: _, ...colors } = f.colors ?? {};
+      saveFolders(machine, { ...f, colors: color ? { ...colors, [colorId]: color } : colors });
       if (!color) {
-        const { [machine ? `${machine}/${id}` : id]: _gone, ...rest } = shared("space.colors") ?? {};
+        const { [machine ? `${machine}/${colorId}` : colorId]: _gone, ...rest } = shared("space.colors") ?? {};
         setShared("space.colors", rest);
       }
       closeOverlay(overlay);
     };
     const swatch = (color) => div().id(`space-color-${color ?? "auto"}`).size(20).flex_none().rounded(5).cursor_pointer()
       .bg(color ? MARK[color] : t.input).border_2().border_color(color === current ? t.foreground : t.popover)
-      .hover((s) => s.border_color(t.muted)).on_click(() => pick(color))
+      .hover((el) => el.border_color(t.muted)).on_click(() => paint(color))
       .when(!color, (el) => el.flex().items_center().justify_center().text_size(9).text_color(t.muted).child("A"));
-    return h_flex().id("space-color-menu").size_full().px(10).gap(8).items_center().bg(t.popover)
-      .children([...Object.keys(MARK), null].map(swatch));
+    const item = (key, label, icon, action, tone = null) => h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
+      .when(Boolean(tone), (el) => el.text_color(tone))
+      .hover((el) => el.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
+      .child(svg(`mods/workspace-chrome/${icon}.svg`).size(13).flex_none().text_color(tone ?? t.muted)).child(label);
+    const worktree = (action, size) => () => openOverlay({ mod: "worktree", kind: "dialog", ...size, props: { space: id, action } });
+    return v_flex().id("space-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
+      .child(h_flex().px(8).pt(6).pb(8).gap(6).items_center().children([...Object.keys(MARK), null].map(swatch)))
+      .child(item("space-rename", "Rename", "square-pen", () => run("space.rename", { id })))
+      .when(Boolean(git), (el) => el
+        .child(item("space-pull", "Git pull", "git-branch", () => pull(s)))
+        .child(item("space-worktree-new", "New worktree", "git-branch", worktree("new", { width: 440, height: 260 })))
+        .child(item("space-worktree-open", "Open worktree", "git-branch", worktree("open", { width: 560, height: 480 }))))
+      .when(git === "linked", (el) => el.child(item("space-worktree-remove", "Remove worktree", "git-branch", worktree("remove", { width: 440, height: 260 }))))
+      .child(item("space-archive", "Archive", "archive", () => archive(s, folder)))
+      .child(item("space-close", "Close", "x", () => run("space.close", { id }), t.ansi1));
   }
 
   archivedMenuView(t) {
@@ -905,7 +926,8 @@ export default class Spaces extends View {
   // Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
   // branch goes when the name already says it (a worktree is named after its branch),
   // and master/main go: nearly every space is on one.
-  gitTail(g, tree, name, t) {
+  gitTail(g, tree, w, t) {
+    const name = w.name;
     const raw = g.branch ?? "detached";
     const same = (a) => a.toLowerCase() === name.toLowerCase();
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
@@ -921,7 +943,10 @@ export default class Spaces extends View {
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
-      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
+      .when(g.behind > 0, (el) => el.child(div().id(`space-pull-${w.id}`).flex_none().px(2).rounded(4).cursor_pointer().text_color(t.ansi1)
+        .hover((s) => s.bg(t.hover)).role("button").accessibility_label(`Pull ${w.name}`)
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { cx.stop_propagation(); pull(w); }).child(`\u2193${g.behind}`)));
   }
 
   row({ w, i, g, tree, folder, nested, kids = 0 }, t) {
@@ -980,7 +1005,7 @@ export default class Spaces extends View {
         else if (from === i) select(w);
         cx.notify();
       })
-      .on_mouse_down("right", () => this.menu(w))
+      .on_mouse_down("right", () => this.menu(w, folder))
       // The same tree lines as sub-agents: from the checkout's avatar center, turning into the branch icon.
       .when(tree === "├─", el => el.child(div().absolute().left(line).top(0).bottom(0).w(1.5).bg(t.input)))
       .when(Boolean(tree), el => el.child(div().absolute().left(line).top(-4).h(19).w(9.75).border_l(1.5).border_b(1.5).rounded_bl(6).border_color(t.input)))
@@ -995,13 +1020,9 @@ export default class Spaces extends View {
             .role("button").accessibility_label(folded ? "Expand worktrees" : "Collapse worktrees")
             .on_mouse_down("left", stop).on_click(toggle)
             .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(12).text_color(t.foreground))))
-          .when(!tree && !(kids > 0 && this.hovered === w.id), el => el.child(h_flex().id(`space-color-${w.id}`).size(18).flex_none().rounded(5).bg(fill)
-            .items_center().justify_center().text_size(11).font_bold().text_color("#ffffff").cursor_pointer()
-            .role("button").accessibility_label(`Colour of ${w.name}`).on_mouse_down("left", stop)
-            .on_click((_e, cx) => { cx.stop_propagation(); this.colorMenu(w); })
-            .child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(!tree && !(kids > 0 && this.hovered === w.id), el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(11).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().min_w(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .child(g ? this.gitTail(g, tree, w, t) : div().flex_1())
           .when(folded, el => el.child(div().id(`space-count-${w.id}`).h(20).min_w(20).px(4).flex_none().flex().items_center().justify_center().rounded(4)
             .text_size(11).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
             .role("button").accessibility_label("Expand worktrees")
@@ -1081,7 +1102,7 @@ export default class Spaces extends View {
     const t = theme();
     if (this.folderMenu) return this.folderMenuView(t);
     if (this.archivedMenu) return this.archivedMenuView(t);
-    if (this.spaceColor) return this.spaceColorView(t);
+    if (this.spaceMenu) return this.spaceMenuView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
