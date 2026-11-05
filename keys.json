@@ -11,6 +11,7 @@
     "ctrl-space shift-p": "folders.prev",
     "cmd-shift-w": "folders.archive",
     "ctrl-shift-w": "folders.archive",
-    "ctrl-v": "terminal.paste"
+    "ctrl-v": "terminal.paste",
+    "ctrl-shift-t": "tab.new"
   }
 }
