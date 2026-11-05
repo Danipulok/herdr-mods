@@ -48,9 +48,13 @@ async function expand(machine, path) {
 // gives the first space that appears (on that machine, for a folder) its place
 // (see adopt).
 async function newSpaceIn(machine, id) {
-  setShared("space-folders.new", { machine, id, before: spaces().map((s) => s.id), until: Date.now() + 60000 });
   const path = id && folders(machine).list.find((f) => f.id === id)?.path;
   const folder = path ? await expand(machine, path).catch(() => null) : null;
+  if (path && !(await isFolder(machine, folder))) {
+    notify({ title: "Can't make a space there", body: `${path} is not a folder. Fix it in Edit folder.`, level: "error" });
+    return;
+  }
+  setShared("space-folders.new", { machine, id, before: spaces().map((s) => s.id), until: Date.now() + 60000 });
   run("space.new", { ...(machine ? { machine } : {}), ...(folder ? { folder } : {}) });
 }
 
@@ -85,6 +89,12 @@ async function archive(s, folder) {
   const entry = { id: `a${Date.now().toString(36)}`, name: s.named ? s.name : null, label: s.name, folder, at: Date.now(), tabs };
   saveFolders(machine, { ...f, of, archive: [...(f.archive ?? []), entry] });
   run("space.close", { id: s.id, confirmed: true });
+}
+
+async function isFolder(machine, folder) {
+  if (!folder || /[*?[]/.test(folder)) return false;
+  const r = await exec("test", ["-d", folder], { on: machine }).catch(() => null);
+  return r?.code === 0;
 }
 
 // `--ff-only`: a branch that moved apart is left to a person, and git says why.
@@ -225,6 +235,8 @@ export function tone(t, status) {
 }
 
 const NEW_FOLDER = "New folder";
+// The edit dialog's fields, in the order Tab walks them.
+const FIELDS = ["name", "path", "match"];
 
 // A path's last folder name: "~/Projects/herdr/" gives "herdr"; "~" or "/" give "".
 const lastPart = (p) => {
@@ -248,20 +260,25 @@ export default class Spaces extends View {
       // The rules follow the start folder until they're given rules of their own.
       this.mirror = !f.match || f.match === f.path;
       this.path.on("change", (_e, cx) => { if (this.mirror) { this.match.set_value(this.path.value()); cx.notify(); } });
-      this.match.on("change", (_e, cx) => { this.mirror = this.match.value() === this.path.value(); if (this.typing) this.suggest(cx); });
-      // Only typed text asks: the rules following the start folder do not.
-      this.typing = false;
+      this.match.on("change", () => { this.mirror = this.match.value() === this.path.value(); });
+      // Hints answer the field being typed in: the rules following the start folder ask nothing.
+      this.focused = "name";
       this.hints = [];
+      this.hintFor = null;
+      this.hintAt = 0;
       this.hintSeq = 0;
-      this.match.on("focus", () => { this.typing = true; });
-      this.match.on("blur", () => { this.typing = false; });
+      this.problem = null;
+      for (const field of FIELDS) {
+        this[field].on("focus", (_e, cx) => { this.focused = field; cx.notify(); });
+        this[field].on("change", (_e, cx) => { this.problem = null; if (this.focused === field && field !== "name") this.suggest(field, cx); });
+      }
       // The name follows the start folder's last part while it's still the default
       // (or already that part); typing a name of its own stops that.
       const named = (n) => !n || n === NEW_FOLDER || n === lastPart(this.path.value());
       this.nameMirror = named(this.name.value());
       this.path.on("change", (_e, cx) => { this.follow(); cx.notify(); });
       this.name.on("change", () => { this.nameMirror = named(this.name.value()); });
-      for (const input of [this.name, this.path, this.match]) input.on("submit", () => this.saveFolder());
+      for (const field of FIELDS) this[field].on("submit", (_e, cx) => this.saveFolder(cx));
       this.name.set_selected_range({ start: 0, end: this.name.value().length });
       this.name.focus();
       cx.timer.after(300, () => this.name.focus());
@@ -595,13 +612,28 @@ export default class Spaces extends View {
     if (was.near && sp.some((s) => s.id === was.near)) run("space.select", { id: was.near });
   }
 
-  saveFolder() {
-    const { id, machine, fresh, overlay } = this.editing, f = folders(machine);
+  // A start folder is one folder that is there: `space.new` starts no terminal anywhere else.
+  saveFolder(cx) {
+    const { id, machine, fresh, overlay } = this.editing;
     const name = this.name.value().trim(), path = this.path.value().trim() || null, match = this.match.value().trim() || null;
-    // A folder deleted while its dialog was open isn't made again; a new one is made now.
-    const list = fresh && !f.list.some((x) => x.id === id) ? [...f.list, { id, name: NEW_FOLDER, folded: false }] : f.list;
-    saveFolders(machine, { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) });
-    closeOverlay(overlay);
+    const save = () => {
+      const f = folders(machine);
+      // A folder deleted while its dialog was open isn't made again; a new one is made now.
+      const list = fresh && !f.list.some((x) => x.id === id) ? [...f.list, { id, name: NEW_FOLDER, folded: false }] : f.list;
+      saveFolders(machine, { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) });
+      closeOverlay(overlay);
+    };
+    if (!path) return save();
+    if (/[*?[]/.test(path)) {
+      this.problem = "Start new spaces in takes one folder, not a pattern: patterns go in Collect spaces from.";
+      cx.notify();
+      return;
+    }
+    cx.spawn(async (cx) => {
+      if (await isFolder(machine, await expand(machine, path).catch(() => null))) return save();
+      this.problem = `${path} is not a folder${machine ? ` on ${machine}` : ""}.`;
+      cx.notify();
+    });
   }
 
   // The name, while it follows the start folder, set to that folder's last part.
@@ -610,34 +642,63 @@ export default class Spaces extends View {
     if (this.nameMirror && part && part !== this.name.value()) this.name.set_value(part);
   }
 
-  // The rules' last part, completed: a path from the folder's machine, a bare
-  // name from the folders the open spaces there work in. A slower answer to an
-  // older value is dropped.
-  suggest(cx) {
-    const seq = ++this.hintSeq, { machine } = this.editing, part = this.match.value().split(",").at(-1).trim();
-    if (!part) { this.hints = []; cx.notify(); return; }
+  // A field's text completed: the start folder from the folder's machine; the
+  // rules' last part the same, or as a bare name from the folders the open
+  // spaces there work in. A slower answer to an older value is dropped.
+  suggest(field, cx) {
+    const seq = ++this.hintSeq, { machine } = this.editing, value = this[field].value();
+    const part = (field === "match" ? value.split(",").at(-1) : value).trim();
+    const show = (hints, cx) => { this.hints = hints; this.hintFor = field; this.hintAt = 0; cx.notify(); };
+    if (!part) return show([], cx);
     if (!/[\\/~]/.test(part)) {
+      if (field !== "match") return show([], cx);
       const ps = panes(), mine = spaces().filter((s) => (s.machine ?? null) === machine);
-      this.hints = [...new Set(mine.map((s) => lastPart(place(s, ps) ?? "")))].filter((n) => n && n !== part && n.startsWith(part)).slice(0, 8);
-      cx.notify();
-      return;
+      return show([...new Set(mine.map((s) => lastPart(place(s, ps) ?? "")))].filter((n) => n && n !== part && n.startsWith(part)).slice(0, 8), cx);
     }
     cx.spawn(async (cx) => {
       const full = await expand(machine, part);
       const r = await exec("sh", ["-c", 'ls -d -- "$1"*/ 2>/dev/null | head -8', "sh", full], { on: machine }).catch(() => null);
       if (seq !== this.hintSeq) return;
       const home = homes[key(machine)], tilde = (d) => part.startsWith("~") && home && d.startsWith(home) ? `~${d.slice(home.length)}` : d;
-      this.hints = (r?.stdout ?? "").split("\n").filter(Boolean).map((d) => tilde(d.replace(/\/+$/, ""))).filter((d) => d !== part);
-      cx.notify();
+      show((r?.stdout ?? "").split("\n").filter(Boolean).map((d) => tilde(d.replace(/\/+$/, ""))).filter((d) => d !== part), cx);
     });
   }
 
   takeHint(hint, cx) {
-    const parts = this.match.value().split(",");
+    const field = this.hintFor, input = this[field];
+    const parts = field === "match" ? input.value().split(",") : [""];
     parts[parts.length - 1] = (parts.length > 1 ? " " : "") + hint;
-    this.match.set_value(parts.join(","));
-    this.match.focus();
-    this.suggest(cx);
+    const next = parts.join(",");
+    input.set_value(next);
+    input.set_selected_range({ start: next.length, end: next.length });
+    input.focus();
+    this.suggest(field, cx);
+  }
+
+  // Up and down walk the hints and Tab takes one; with none shown, Tab goes to
+  // the next field and Shift+Tab to the one before.
+  editKey(e, cx) {
+    const shown = this.hintFor === this.focused ? this.hints : [];
+    if (e.key === "escape" && shown.length) this.hints = [];
+    else if (e.key === "escape") return closeOverlay(this.editing.overlay);
+    else if ((e.key === "down" || e.key === "up") && shown.length) this.hintAt = (this.hintAt + (e.key === "down" ? 1 : shown.length - 1)) % shown.length;
+    else if (e.key === "tab" && !e.modifiers.shift && shown.length) this.takeHint(shown[this.hintAt], cx);
+    else if (e.key === "tab") {
+      const next = FIELDS[(FIELDS.indexOf(this.focused) + (e.modifiers.shift ? FIELDS.length - 1 : 1)) % FIELDS.length];
+      this.hints = [];
+      this.focused = next;
+      this[next].focus();
+    }
+    else return;
+    cx.stop_propagation();
+    cx.notify();
+  }
+
+  hintList(field, t) {
+    return v_flex().id(`folder-hints-${field}`).mt(-10).p(4).gap(1).rounded(8).border_1().border_color(t.input).bg(t.background)
+      .children(this.hints.map((h, i) => div().id(`folder-hint-${field}-${i}`).h(24).px(8).flex().items_center().rounded(5).cursor_pointer()
+        .text_size(12.5).when(i === this.hintAt, (el) => el.bg(t.selected)).hover((s) => s.bg(t.hover))
+        .on_click((_e, cx) => this.takeHint(h, cx)).child(h)));
   }
 
   // The system's folder picker, for this computer: home written as "~".
@@ -810,19 +871,19 @@ export default class Spaces extends View {
         .when(Boolean(extra), (el) => el.child(extra)))
       .when(Boolean(hint), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(hint)));
     return v_flex().id("folder-edit").w_full().p(20).gap(16).bg(t.popover).text_color(t.foreground)
-      .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(overlay); cx.stop_propagation(); } })
+      .on_key_down((e, cx) => this.editKey(e, cx))
       .child(div().text_size(15).font_semibold().child("Edit folder"))
       .child(field("Name", this.name, null))
       .child(field("Start new spaces in", this.path, "Its + and New space here open a space there.",
         machine ? null : button("folder-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
+      .when(this.hintFor === "path" && this.hints.length > 0, (el) => el.child(this.hintList("path", t)))
       .child(field("Collect spaces from", this.match,
         "Spaces working in these folders join this one. Comma-separated: a folder name like web, or a path like ~/code/client-*."))
-      .when(this.hints.length > 0, (el) => el.child(v_flex().id("folder-hints").mt(-10).p(4).gap(1).rounded(8).border_1().border_color(t.input).bg(t.background)
-        .children(this.hints.map((h, i) => div().id(`folder-hint-${i}`).h(24).px(8).flex().items_center().rounded(5).cursor_pointer()
-          .text_size(12.5).hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.takeHint(h, cx)).child(h)))))
+      .when(this.hintFor === "match" && this.hints.length > 0, (el) => el.child(this.hintList("match", t)))
+      .when(Boolean(this.problem), (el) => el.child(div().text_size(12).text_color(t.ansi1).child(this.problem)))
       .child(h_flex().pt(4).gap(8).justify_end()
         .child(button("folder-cancel", "Cancel", false, () => closeOverlay(overlay)))
-        .child(button("folder-save", "Save", true, () => this.saveFolder())));
+        .child(button("folder-save", "Save", true, (_e, cx) => this.saveFolder(cx))));
   }
 
   // Spaces in order, each worktree space moved under its main checkout's.
