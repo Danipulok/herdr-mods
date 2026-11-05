@@ -280,6 +280,7 @@ export default class Spaces extends View {
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     this.foldedRepos = new Set(JSON.parse(localStorage.getItem("repos.folded") ?? "[]"));
     this.openArchives = new Set(JSON.parse(localStorage.getItem("archive.open") ?? "[]"));
+    this.folderLabels = new Map();
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // Another screen may have changed them: read every machine's file again now and then.
@@ -443,6 +444,19 @@ export default class Spaces extends View {
         }
       } catch { this.watching.delete(repo); }
     });
+  }
+
+  // ccgram names a space's Telegram topic `<folder> | <space>` from this label; `key=` removes it.
+  labelFolders(sp) {
+    const ps = panes(), all = agents();
+    for (const s of sp) {
+      const f = folders(s.machine ?? null), id = folderOf(s, f, ps), name = f.list.find((x) => x.id === id)?.name ?? "";
+      for (const a of all.filter((a) => a.space === s.id)) {
+        if (this.folderLabels.get(a.address) === name) continue;
+        this.folderLabels.set(a.address, name);
+        hc(["label", a.address, `herdr.folder=${name}`]).catch(() => this.folderLabels.delete(a.address));
+      }
+    }
   }
 
   colorMenu(w) {
@@ -1045,6 +1059,7 @@ export default class Spaces extends View {
       changed = true;
     }
     if (changed) setShared("space.colors", kept);
+    this.labelFolders(sp);
     // While a space in a folder is dragged, a place to drop it out of the folder.
     const dragged = this.pressed !== null ? spaces()[this.pressed] : null;
     const leaving = Boolean(dragged && folderOf(dragged, folders(dragged.machine ?? null), panes()));
