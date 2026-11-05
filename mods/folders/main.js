@@ -120,7 +120,7 @@ const ago = (at) => {
 
 // A rule of "Collect spaces from" takes a folder and everything in it. "~" is
 // any home, "*" any one folder name, and a rule starting with neither "/" nor
-// "~" is a folder name at any depth ("wbso-ai").
+// "~" is a folder name at any depth ("web").
 export function rule(pattern) {
   const p = pattern.trim().replace(/\/+$/, "");
   if (!p) return null;
@@ -237,7 +237,7 @@ export default class Spaces extends View {
       this.editing = { id: edit, machine, fresh, overlay };
       this.name = InputState.new({ value: f.name ?? "" });
       this.path = InputState.new({ value: f.path ?? "", placeholder: "e.g. ~/Documents/github.com/owner/repo" });
-      this.match = InputState.new({ value: f.match ?? "", placeholder: "e.g. wbso-ai, ~/code/client-*" });
+      this.match = InputState.new({ value: f.match ?? "", placeholder: "e.g. web, ~/code/client-*" });
       // The rules follow the start folder until they're given rules of their own.
       this.mirror = !f.match || f.match === f.path;
       this.path.on("change", (_e, cx) => { if (this.mirror) { this.match.set_value(this.path.value()); cx.notify(); } });
@@ -795,7 +795,7 @@ export default class Spaces extends View {
       .child(field("Start new spaces in", this.path, "Its + and New space here open a space there.",
         machine ? null : button("folder-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
       .child(field("Collect spaces from", this.match,
-        "Spaces working in these folders join this one. Comma-separated: a folder name like wbso-ai, or a path like ~/code/client-*."))
+        "Spaces working in these folders join this one. Comma-separated: a folder name like web, or a path like ~/code/client-*."))
       .when(this.hints.length > 0, (el) => el.child(v_flex().id("folder-hints").mt(-10).p(4).gap(1).rounded(8).border_1().border_color(t.input).bg(t.background)
         .children(this.hints.map((h, i) => div().id(`folder-hint-${i}`).h(24).px(8).flex().items_center().rounded(5).cursor_pointer()
           .text_size(12.5).hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.takeHint(h, cx)).child(h)))))
