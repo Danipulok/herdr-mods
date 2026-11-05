@@ -13,17 +13,17 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { spaces, agents, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
+import { spaces, agents, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand, notify } from "herdr";
 
 // A machine's folders live in a file in its home, so every screen showing its
 // spaces shows the same folders: { list: [{ id, name, folded }], of: { spaceId:
-// folderId }, at }, with space ids as that machine knows them. While this runs,
+// folderId }, archive, at }, with space ids as that machine knows them. While this runs,
 // shared state holds them per machine ("" is this computer), so the sidebar, a
 // folder's menu and its edit dialog see a change at once.
 const FILE = "~/.config/herdr-space-folders.json";
 const key = (machine) => machine ?? "";
 const all = () => shared("space-folders") ?? {};
-const folders = (machine) => all()[key(machine)] ?? { list: [], of: {} };
+const folders = (machine) => all()[key(machine)] ?? { list: [], of: {}, archive: [] };
 const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
 const URGENT = ["blocked", "done", "working"];
 
@@ -31,7 +31,7 @@ async function readFolders(machine) {
   const r = await exec("sh", ["-c", `cat ${FILE} 2>/dev/null`], { on: machine });
   try {
     const d = JSON.parse(r.stdout);
-    return { list: d.list ?? [], of: d.of ?? {}, at: d.at ?? 0 };
+    return { list: d.list ?? [], of: d.of ?? {}, archive: d.archive ?? [], at: d.at ?? 0 };
   } catch { return null; }
 }
 
@@ -53,6 +53,70 @@ async function newSpaceIn(machine, id) {
   const folder = path ? await expand(machine, path).catch(() => null) : null;
   run("space.new", { ...(machine ? { machine } : {}), ...(folder ? { folder } : {}) });
 }
+
+// Archived spaces stay in their folder's file: { id, name, label, folder, at, tabs:
+// [{ name, cwd, session }] }. Herdr knows no agent's session, so it comes from
+// ccgram's map, and is resumed in the folder its transcript started in: Claude
+// looks a session up by that folder only.
+const SESSIONS = "~/.ccgram/session_map.json";
+
+async function sessionsOn(machine) {
+  const r = await exec("sh", ["-c", `cat ${SESSIONS} 2>/dev/null`], { on: machine }).catch(() => null);
+  try { return JSON.parse(r?.stdout ?? ""); } catch { return {}; }
+}
+
+async function startedIn(machine, transcript) {
+  const r = await exec("grep", ["-m1", "-o", '"cwd":"[^"]*"', transcript], { on: machine }).catch(() => null);
+  return r?.code === 0 ? JSON.parse(`{${r.stdout.trim()}}`).cwd : null;
+}
+
+async function archive(s, folder) {
+  const machine = s.machine ?? null, map = await sessionsOn(machine), ps = panes(), mine = agents().filter((a) => a.space === s.id);
+  const tabs = [];
+  for (const c of s.tabs) {
+    const agent = mine.find((a) => a.tab === c.id), known = agent && map[`hc:${agent.address}`];
+    const session = known?.provider_name === "claude" ? known.session_id : null;
+    const live = ps.find((p) => p.tab === c.id && p.cwd)?.cwd ?? s.folder;
+    const cwd = (session && await startedIn(machine, known.transcript_path)) || live;
+    tabs.push({ name: c.named ? c.name : null, cwd, session });
+  }
+
+  const f = folders(machine), { [localId(s)]: _, ...of } = f.of;
+  const entry = { id: `a${Date.now().toString(36)}`, name: s.named ? s.name : null, label: s.name, folder, at: Date.now(), tabs };
+  saveFolders(machine, { ...f, of, archive: [...(f.archive ?? []), entry] });
+  run("space.close", { id: s.id, confirmed: true });
+}
+
+// Back in its folder, each tab in its folder and its agent resumed. A folder
+// that's gone (a removed worktree) stops it, and the entry stays.
+async function restore(machine, entry) {
+  for (const c of entry.tabs) {
+    const r = c.cwd ? await exec("test", ["-d", c.cwd], { on: machine }).catch(() => null) : { code: 0 };
+    if (r?.code !== 0) {
+      notify({ title: `Can't restore ${entry.label}`, body: `${c.cwd} is gone.`, level: "error" });
+      return;
+    }
+  }
+
+  const f = folders(machine);
+  saveFolders(machine, { ...f, archive: (f.archive ?? []).filter((e) => e.id !== entry.id) });
+  setShared("space-folders.new", { machine, id: entry.folder, before: spaces().map((s) => s.id), until: Date.now() + 60000 });
+  const start = (c) => ({ ...(c.cwd ? { folder: c.cwd } : {}), ...(c.session ? { argv: ["claude", "--resume", c.session] } : {}) });
+  const [first, ...rest] = entry.tabs;
+  run("space.new", { ...(machine ? { machine } : {}), ...(entry.name ? { name: entry.name } : {}), ...(first.name ? { tab: first.name } : {}), ...start(first) });
+  // Herdr names no id back, and the new space is the one in front.
+  for (const c of rest) run("tab.new", { ...(c.name ? { name: c.name } : {}), ...start(c) });
+}
+
+function forget(machine, id) {
+  const f = folders(machine);
+  saveFolders(machine, { ...f, archive: (f.archive ?? []).filter((e) => e.id !== id) });
+}
+
+const ago = (at) => {
+  const m = Math.floor((Date.now() - at) / 60000);
+  return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
+};
 
 // A rule of "Collect spaces from" takes a folder and everything in it. "~" is
 // any home, "*" any one folder name, and a rule starting with neither "/" nor
@@ -98,7 +162,7 @@ function machineFolder(m, rows, ps) {
 }
 
 function saveFolders(machine, data) {
-  const next = { list: data.list, of: data.of, at: Date.now() };
+  const next = { list: data.list, of: data.of, archive: data.archive ?? [], at: Date.now() };
   setShared("space-folders", { ...all(), [key(machine)]: next });
   exec("sh", ["-c", `mkdir -p ~/.config && printf '%s\\n' "$1" > ${FILE}.tmp && mv ${FILE}.tmp ${FILE}`, "sh", JSON.stringify(next)], { on: machine })
     .catch(() => null);
@@ -213,6 +277,7 @@ export default class Spaces extends View {
     this.machines = [];
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     this.foldedRepos = new Set(JSON.parse(localStorage.getItem("repos.folded") ?? "[]"));
+    this.openArchives = new Set(JSON.parse(localStorage.getItem("archive.open") ?? "[]"));
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // Another screen may have changed them: read every machine's file again now and then.
@@ -228,6 +293,9 @@ export default class Spaces extends View {
       for (;;) {
         const c = String(await nextCommand()).split(".").pop();
         if (c === "next" || c === "prev") this.step(c === "next" ? 1 : -1);
+        // "folders.archive": the space in front.
+        const front = c === "archive" && spaces().find((w) => w.active);
+        if (front) archive(front, this.seen.find((e) => e.id === front.id)?.folder ?? null);
         cx.notify();
       }
     });
@@ -549,9 +617,11 @@ export default class Spaces extends View {
           ...(hidden ? [] : [this.folderHead(f, n, machine, counted, t, collapsed)]),
           ...inside.flatMap((r) => draw(r, away)),
           ...visitors.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed, { nested: true, hidden: away, seen })),
+          ...(away || collapsed ? [] : this.archived(machine, f.id, list, t, nested)),
         ];
       }),
       ...placed.filter((r) => !r.folder).flatMap((r) => draw(r, hidden)),
+      ...(hidden || collapsed ? [] : this.archived(machine, null, list, t, nested)),
     ];
   }
 
@@ -612,7 +682,9 @@ export default class Spaces extends View {
       .child(item("folder-edit", "Edit folder…", () => openOverlay({ mod: "folders", kind: "dialog", width: 460, props: { edit: id, machine } })))
       .child(item("folder-delete", "Delete folder", () => {
         const f = folders(machine);
-        saveFolders(machine, { list: f.list.filter((x) => x.id !== id), of: Object.fromEntries(Object.entries(f.of).filter(([, v]) => v !== id)) });
+        // Its archived spaces stay, in no folder.
+        const archive = (f.archive ?? []).map((e) => e.folder === id ? { ...e, folder: null } : e);
+        saveFolders(machine, { list: f.list.filter((x) => x.id !== id), of: Object.fromEntries(Object.entries(f.of).filter(([, v]) => v !== id)), archive });
       }));
   }
 
@@ -787,11 +859,7 @@ export default class Spaces extends View {
       .accessibility_label(w.name)
       .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
-      .when(kids > 0, (el) => el.on_hover((over, cx) => {
-        if (over) this.hovered = w.id;
-        else if (this.hovered === w.id) this.hovered = null;
-        cx.notify();
-      }))
+      .on_hover((over, cx) => this.hover(w.id, over, cx))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
         div().absolute().left(0).right(0).h(2).bg(t.accent)
@@ -842,8 +910,63 @@ export default class Spaces extends View {
           .when(folded, el => el.child(div().id(`space-count-${w.id}`).h(20).min_w(20).px(4).flex_none().flex().items_center().justify_center().rounded(4)
             .text_size(11).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
             .role("button").accessibility_label("Expand worktrees")
-            .on_mouse_down("left", stop).on_click(toggle).child(String(kids)))),
+            .on_mouse_down("left", stop).on_click(toggle).child(String(kids))))
+          .when(this.hovered === w.id, el => el.child(this.tool(`space-archive-${w.id}`, "Archive space", "archive", t, () => archive(w, folder)))),
       );
+  }
+
+  hover(id, over, cx) {
+    if (over) this.hovered = id;
+    else if (this.hovered === id) this.hovered = null;
+    cx.notify();
+  }
+
+  // A 20px icon button inside a row, which neither drags nor selects the row.
+  tool(id, label, icon, t, action) {
+    return h_flex().id(id).size(20).flex_none().items_center().justify_center().rounded(4).text_color(t.dim)
+      .role("button").accessibility_label(label).hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); action(); })
+      .child(svg(`mods/workspace-chrome/${icon}.svg`).size(12));
+  }
+
+  // A folder's archived spaces (folder null: those in none, or in a folder since
+  // deleted), newest first, behind one row at the folder's end.
+  archived(machine, folder, list, t, nested) {
+    const ids = new Set(list.map((x) => x.id));
+    const mine = (folders(machine).archive ?? []).filter((e) => (ids.has(e.folder) ? e.folder : null) === folder).reverse();
+    if (!mine.length) return [];
+    const at = `${machine ?? ""}/${folder ?? ""}`, open = this.openArchives.has(at);
+    const indent = folder || nested ? 26 : 8;
+    const head = h_flex().id(`archive-${at}`).h(30).flex_none().pl(indent).pr(8).gap(8).items_center().rounded(8)
+      .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .role("button").accessibility_label(open ? "Hide archived spaces" : "Show archived spaces")
+      .on_click((_e, cx) => this.toggleArchive(at, cx))
+      .child(h_flex().size(18).flex_none().items_center().justify_center().child(svg("mods/workspace-chrome/archive.svg").size(13)))
+      .child(div().flex_1().min_w(0).truncate().child("Archive"))
+      .child(div().flex_none().text_size(11.5).child(String(mine.length)))
+      .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none());
+    return open ? [head, ...mine.map((e) => this.archivedRow(machine, e, indent, t))] : [head];
+  }
+
+  // Clicked, the space comes back; its age, hovered, turns into the button that forgets it.
+  archivedRow(machine, e, indent, t) {
+    return h_flex().id(`archived-${e.id}`).h(30).flex_none().pl(indent).pr(8).gap(8).items_center().rounded(8)
+      .text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .role("button").accessibility_label(`Restore ${e.label}`)
+      .on_hover((over, cx) => this.hover(e.id, over, cx))
+      .on_click(() => restore(machine, e))
+      .child(h_flex().size(18).flex_none().rounded(5).bg(t.input).items_center().justify_center().text_size(11).font_bold()
+        .child([...e.label][0]?.toUpperCase() ?? "?"))
+      .child(div().flex_1().min_w(0).truncate().child(e.label))
+      .child(this.hovered === e.id ? this.tool(`archived-forget-${e.id}`, "Forget archived space", "x", t, () => forget(machine, e.id))
+        : div().flex_none().text_size(11).text_color(t.dim).child(ago(e.at)));
+  }
+
+  toggleArchive(at, cx) {
+    this.openArchives.has(at) ? this.openArchives.delete(at) : this.openArchives.add(at);
+    localStorage.setItem("archive.open", JSON.stringify([...this.openArchives]));
+    cx.notify();
   }
 
   compact({ w, i }, t) {
