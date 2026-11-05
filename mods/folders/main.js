@@ -228,8 +228,9 @@ const lastPart = (p) => {
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, edit, machine = null, fresh = false, overlay } = props() ?? {};
+    const { folderMenu, archivedMenu, edit, machine = null, fresh = false, overlay } = props() ?? {};
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
+    if (archivedMenu) { this.archivedMenu = { id: archivedMenu, machine, overlay }; return; }
     if (edit) {
       const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
       this.editing = { id: edit, machine, fresh, overlay };
@@ -688,6 +689,16 @@ export default class Spaces extends View {
       }));
   }
 
+  archivedMenuView(t) {
+    const { id, machine, overlay } = this.archivedMenu;
+    const entry = (folders(machine).archive ?? []).find((x) => x.id === id);
+    const item = (key, label, action) => div().id(key).h(30).px(10).flex().items_center().rounded(6).cursor_pointer()
+      .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); if (entry) action(); }).child(label);
+    return v_flex().id("archived-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
+      .child(item("archived-restore", "Restore", () => restore(machine, entry)))
+      .child(item("archived-delete", "Delete", () => forget(machine, id)));
+  }
+
   editView(t) {
     const { machine, overlay } = this.editing;
     const button = (key, label, primary, action) => h_flex().id(key).h(32).px(14).flex_none().items_center().rounded(8).border_1()
@@ -911,7 +922,7 @@ export default class Spaces extends View {
             .text_size(11).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
             .role("button").accessibility_label("Expand worktrees")
             .on_mouse_down("left", stop).on_click(toggle).child(String(kids))))
-          .when(this.hovered === w.id, el => el.child(this.tool(`space-archive-${w.id}`, "Archive space", "archive", t, () => archive(w, folder)))),
+          .when(this.hovered === w.id, el => el.child(this.tool(`space-archive-${w.id}`, "Archive space", "mods/workspace-chrome/archive.svg", t, () => archive(w, folder)))),
       );
   }
 
@@ -927,7 +938,7 @@ export default class Spaces extends View {
       .role("button").accessibility_label(label).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => { cx.stop_propagation(); action(); })
-      .child(svg(`mods/workspace-chrome/${icon}.svg`).size(12));
+      .child(svg(icon).size(12));
   }
 
   // A folder's archived spaces (folder null: those in none, or in a folder since
@@ -949,17 +960,16 @@ export default class Spaces extends View {
     return open ? [head, ...mine.map((e) => this.archivedRow(machine, e, indent, t))] : [head];
   }
 
-  // Clicked, the space comes back; its age, hovered, turns into the button that forgets it.
+  // Hovered, its age turns into the restore button; deleting is only in the right-click menu, so a stray click loses nothing.
   archivedRow(machine, e, indent, t) {
     return h_flex().id(`archived-${e.id}`).h(30).flex_none().pl(indent).pr(8).gap(8).items_center().rounded(8)
-      .text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-      .role("button").accessibility_label(`Restore ${e.label}`)
+      .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_hover((over, cx) => this.hover(e.id, over, cx))
-      .on_click(() => restore(machine, e))
+      .on_mouse_down("right", () => openOverlay({ mod: "folders", kind: "popup", width: 210, height: 80, props: { archivedMenu: e.id, machine } }))
       .child(h_flex().size(18).flex_none().rounded(5).bg(t.input).items_center().justify_center().text_size(11).font_bold()
         .child([...e.label][0]?.toUpperCase() ?? "?"))
       .child(div().flex_1().min_w(0).truncate().child(e.label))
-      .child(this.hovered === e.id ? this.tool(`archived-forget-${e.id}`, "Forget archived space", "x", t, () => forget(machine, e.id))
+      .child(this.hovered === e.id ? this.tool(`archived-restore-${e.id}`, `Restore ${e.label}`, "mods/folders/archive-restore.svg", t, () => restore(machine, e))
         : div().flex_none().text_size(11).text_color(t.dim).child(ago(e.at)));
   }
 
@@ -986,6 +996,7 @@ export default class Spaces extends View {
   render() {
     const t = theme();
     if (this.folderMenu) return this.folderMenuView(t);
+    if (this.archivedMenu) return this.archivedMenuView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];

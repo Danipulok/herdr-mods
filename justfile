@@ -19,6 +19,7 @@ deploy: lint
     for mod in mods/*/; do
         mkdir -p "{{ herdr }}/$mod"
         cp "$mod"*.js "$mod"mod.json "{{ herdr }}/$mod"
+        find "$mod" -maxdepth 1 -name "*.svg" -exec cp {} "{{ herdr }}/$mod" \;
     done
     cp layouts/*.json "{{ herdr }}/layouts/"
     keys="{{ herdr }}/keys.json"
