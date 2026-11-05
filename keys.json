@@ -1,0 +1,13 @@
+{
+  "layout:my-t3": {
+    "cmd-shift-b": "t3-chrome.sidebar",
+    "cmd-shift-a": "t3-tabs.view",
+    "cmd-shift-s": "t3-inbox.settle",
+    "alt-down": "folders.next",
+    "alt-up": "folders.prev",
+    "ctrl-shift-pagedown": "folders.next",
+    "ctrl-shift-pageup": "folders.prev",
+    "ctrl-space shift-n": "folders.next",
+    "ctrl-space shift-p": "folders.prev"
+  }
+}
