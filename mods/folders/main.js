@@ -59,7 +59,7 @@ async function newSpaceIn(machine, id) {
 }
 
 // Archived spaces stay in their folder's file: { id, name, label, folder, at, tabs:
-// [{ name, cwd, session }] }. Herdr knows no agent's session, so it comes from
+// [{ name, cwd, terminal, session }] }. Herdr knows no agent's session, so it comes from
 // ccgram's map, and is resumed in the folder its transcript started in: Claude
 // looks a session up by that folder only.
 const SESSIONS = "~/.ccgram/session_map.json";
@@ -78,11 +78,13 @@ async function archive(s, folder) {
   const machine = s.machine ?? null, map = await sessionsOn(machine), ps = panes(), mine = agents().filter((a) => a.space === s.id);
   const tabs = [];
   for (const c of s.tabs) {
-    const agent = mine.find((a) => a.tab === c.id), known = agent && map[`hc:${agent.address}`];
+    const agent = mine.find((a) => a.tab === c.id);
+    const terminal = agent?.address ?? ps.find((p) => p.tab === c.id && p.terminal)?.terminal ?? null;
+    const known = terminal && map[`hc:${terminal}`];
     const session = known?.provider_name === "claude" ? known.session_id : null;
     const live = ps.find((p) => p.tab === c.id && p.cwd)?.cwd ?? s.folder;
     const cwd = (session && await startedIn(machine, known.transcript_path)) || live;
-    tabs.push({ name: c.named ? c.name : null, cwd, session });
+    tabs.push({ name: c.named ? c.name : null, cwd, terminal, session });
   }
 
   const f = folders(machine), { [localId(s)]: _, ...of } = f.of;
