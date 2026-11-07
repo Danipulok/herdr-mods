@@ -87,9 +87,11 @@ async function archive(s, folder) {
     tabs.push({ name: c.named ? c.name : null, cwd, terminal, session });
   }
 
-  const f = folders(machine), { [localId(s)]: _, ...of } = f.of;
   const entry = { id: `a${Date.now().toString(36)}`, name: s.named ? s.name : null, label: s.name, folder, at: Date.now(), tabs };
-  saveFolders(machine, { ...f, of, archive: [...(f.archive ?? []), entry] });
+  saveFolders(machine, (f) => {
+    const { [localId(s)]: _, ...of } = f.of;
+    return { ...f, of, archive: [...(f.archive ?? []), entry] };
+  });
   run("space.close", { id: s.id, confirmed: true });
 }
 
@@ -117,8 +119,8 @@ async function restore(machine, entry) {
     }
   }
 
-  const f = folders(machine);
-  saveFolders(machine, { ...f, archive: (f.archive ?? []).filter((e) => e.id !== entry.id) });
+  saveFolders(machine, (f) => ({ ...f, archive: (f.archive ?? []).filter((e) => e.id !== entry.id) }));
+
   setShared("space-folders.new", { machine, id: entry.folder, before: spaces().map((s) => s.id), until: Date.now() + 60000 });
   const start = (c) => ({ ...(c.cwd ? { folder: c.cwd } : {}), ...(c.session ? { argv: ["claude", "--resume", c.session] } : {}) });
   const [first, ...rest] = entry.tabs;
@@ -128,8 +130,7 @@ async function restore(machine, entry) {
 }
 
 function forget(machine, id) {
-  const f = folders(machine);
-  saveFolders(machine, { ...f, archive: (f.archive ?? []).filter((e) => e.id !== id) });
+  saveFolders(machine, (f) => ({ ...f, archive: (f.archive ?? []).filter((e) => e.id !== id) }));
 }
 
 const ago = (at) => {
@@ -180,11 +181,24 @@ function machineFolder(m, rows, ps) {
   return folders(null).list.find((f) => collects(f, m) || rows.some((r) => collects(f, place(r.w, ps))))?.id ?? null;
 }
 
-function saveFolders(machine, data) {
-  const next = { list: data.list, of: data.of, archive: data.archive ?? [], colors: data.colors ?? folders(machine).colors ?? {}, at: Date.now() };
-  setShared("space-folders", { ...all(), [key(machine)]: next });
-  exec("sh", ["-c", `mkdir -p ~/.config && printf '%s\\n' "$1" > ${FILE}.tmp && mv ${FILE}.tmp ${FILE}`, "sh", JSON.stringify(next)], { on: machine })
-    .catch(() => null);
+// `change` maps a machine's folders to the next ones. It is shown at once, then
+//  written onto the newer of the file and this copy, one save at a time per
+//  machine: Ovis writes the file too, and a copy older than it would undo that.
+const saving = {};
+function saveFolders(machine, change) {
+  const next = (data) => {
+    const changed = change(data);
+    return { list: changed.list, of: changed.of, archive: changed.archive ?? [], colors: changed.colors ?? data.colors ?? {}, at: Date.now() };
+  };
+  setShared("space-folders", { ...all(), [key(machine)]: next(folders(machine)) });
+
+  saving[key(machine)] = (saving[key(machine)] ?? Promise.resolve()).then(async () => {
+    const read = await readFolders(machine).catch(() => null), now = folders(machine);
+    const data = next(read && read.at > now.at ? read : now);
+    setShared("space-folders", { ...all(), [key(machine)]: data });
+
+    await exec("sh", ["-c", `mkdir -p ~/.config && printf '%s\\n' "$1" > ${FILE}.tmp && mv ${FILE}.tmp ${FILE}`, "sh", JSON.stringify(data)], { on: machine });
+  }).catch(() => null);
 }
 
 function find(node, id) {
@@ -318,6 +332,7 @@ export default class Spaces extends View {
     // Another screen may have changed them: read every machine's file again now and then.
     this.loadFolders(cx);
     cx.timer.every(15000, cx => this.loadFolders(cx));
+    this.watchFolders(cx);
     // `git status` walks the whole tree, on another machine a process there:
     // only when its answer could have changed (see `due`).
     cx.timer.every(250, (cx) => this.checkNew(cx));
@@ -499,6 +514,19 @@ export default class Spaces extends View {
 
   // ---- folders ----
 
+  // This computer's file at once when another writer (Ovis) changes it; a batch
+  //  naming the folder itself means anything in it may have changed.
+  watchFolders(cx) {
+    const dir = `${home()}/.config`, file = `${dir}/herdr-space-folders.json`;
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const changed = await watchFolder(dir).catch(() => null);
+        if (changed === null) return;
+        if (changed.some((path) => path === file || path === dir)) this.loadFolders(cx);
+      }
+    });
+  }
+
   // Each machine's file, read again; a newer copy here (a save on its way) wins.
   loadFolders(cx) {
     const names = [null, ...this.machines.filter((m) => m.state === "connected").map((m) => m.name)];
@@ -518,21 +546,22 @@ export default class Spaces extends View {
   }
 
   reorder(machine, from, to) {
-    const f = folders(machine), list = [...f.list], i = list.findIndex((x) => x.id === from), j = list.findIndex((x) => x.id === to);
-    if (i < 0 || j < 0) return;
-    list.splice(j, 0, ...list.splice(i, 1));
-    saveFolders(machine, { ...f, list });
+    const f = folders(machine);
+    if (!f.list.some((x) => x.id === from) || !f.list.some((x) => x.id === to)) return;
+    saveFolders(machine, (data) => {
+      const list = [...data.list], i = list.findIndex((x) => x.id === from), j = list.findIndex((x) => x.id === to);
+      if (i >= 0 && j >= 0) list.splice(j, 0, ...list.splice(i, 1));
+      return { ...data, list };
+    });
   }
 
   // One of the spaces' avatar colors, or null for grey.
   paint(machine, id, color) {
-    const f = folders(machine);
-    saveFolders(machine, { ...f, list: f.list.map((x) => x.id === id ? { ...x, color } : x) });
+    saveFolders(machine, (f) => ({ ...f, list: f.list.map((x) => x.id === id ? { ...x, color } : x) }));
   }
 
   toggleFolder(machine, id) {
-    const f = folders(machine);
-    saveFolders(machine, { ...f, list: f.list.map((x) => x.id === id ? { ...x, folded: !x.folded } : x) });
+    saveFolders(machine, (f) => ({ ...f, list: f.list.map((x) => x.id === id ? { ...x, folded: !x.folded } : x) }));
   }
 
   // A space dropped into a folder (or out of one, with null): only one of its own
@@ -540,11 +569,13 @@ export default class Spaces extends View {
   drop(index, id) {
     const s = spaces()[index], machine = s?.machine ?? null, f = folders(machine);
     if (!s || (id && !f.list.some((x) => x.id === id))) return;
-    const of = { ...f.of };
-    if (id) of[localId(s)] = id;
-    else if (folderOf(s, f, panes())) of[localId(s)] = "";
-    else delete of[localId(s)];
-    saveFolders(machine, { ...f, of });
+    saveFolders(machine, (data) => {
+      const of = { ...data.of };
+      if (id) of[localId(s)] = id;
+      else if (folderOf(s, data, panes())) of[localId(s)] = "";
+      else delete of[localId(s)];
+      return { ...data, of };
+    });
   }
 
   // A space made from a folder (its + or its menu) goes in it: the first new space
@@ -559,7 +590,7 @@ export default class Spaces extends View {
     if (fresh || now > want.until) setShared("space-folders.new", null);
     if (!fresh) return null;
     const f = folders(want.machine);
-    if (f.list.some((x) => x.id === want.id)) saveFolders(want.machine, { ...f, of: { ...f.of, [localId(fresh)]: want.id } });
+    if (f.list.some((x) => x.id === want.id)) saveFolders(want.machine, (data) => ({ ...data, of: { ...data.of, [localId(fresh)]: want.id } }));
     return fresh.id;
   }
 
@@ -592,7 +623,7 @@ export default class Spaces extends View {
   settle(sp, s, from) {
     const f = folders(from.machine);
     if (from.folder && f.of[localId(s)] === undefined && f.list.some((x) => x.id === from.folder)) {
-      saveFolders(from.machine, { ...f, of: { ...f.of, [localId(s)]: from.folder } });
+      saveFolders(from.machine, (data) => ({ ...data, of: { ...data.of, [localId(s)]: from.folder } }));
     }
     const i = sp.findIndex((w) => w.id === from.id), j = sp.findIndex((w) => w.id === s.id);
     if (i >= 0 && j >= 0 && j !== i + 1) run("space.move", { id: s.id, index: j > i ? i + 2 : i + 1 });
@@ -619,10 +650,11 @@ export default class Spaces extends View {
     const { id, machine, fresh, overlay } = this.editing;
     const name = this.name.value().trim(), path = this.path.value().trim() || null, match = this.match.value().trim() || null;
     const save = () => {
-      const f = folders(machine);
       // A folder deleted while its dialog was open isn't made again; a new one is made now.
-      const list = fresh && !f.list.some((x) => x.id === id) ? [...f.list, { id, name: NEW_FOLDER, folded: false }] : f.list;
-      saveFolders(machine, { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) });
+      saveFolders(machine, (f) => {
+        const list = fresh && !f.list.some((x) => x.id === id) ? [...f.list, { id, name: NEW_FOLDER, folded: false }] : f.list;
+        return { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) };
+      });
       closeOverlay(overlay);
     };
     if (!path) return save();
@@ -804,10 +836,13 @@ export default class Spaces extends View {
       .child(item("folder-space", "New space here", () => newSpaceIn(machine, id)))
       .child(item("folder-edit", "Edit folder…", () => openOverlay({ mod: "folders", kind: "dialog", width: 460, props: { edit: id, machine } })))
       .child(item("folder-delete", "Delete folder", () => {
-        const f = folders(machine);
         // Its archived spaces stay, in no folder.
-        const archive = (f.archive ?? []).map((e) => e.folder === id ? { ...e, folder: null } : e);
-        saveFolders(machine, { list: f.list.filter((x) => x.id !== id), of: Object.fromEntries(Object.entries(f.of).filter(([, v]) => v !== id)), archive });
+        saveFolders(machine, (f) => ({
+          ...f,
+          list: f.list.filter((x) => x.id !== id),
+          of: Object.fromEntries(Object.entries(f.of).filter(([, v]) => v !== id)),
+          archive: (f.archive ?? []).map((e) => e.folder === id ? { ...e, folder: null } : e),
+        }));
       }));
   }
 
@@ -819,8 +854,10 @@ export default class Spaces extends View {
     if (!s) return div();
     const f = folders(machine), colorId = localId(s), current = f.colors?.[colorId] ?? null;
     const paint = (color) => {
-      const { [colorId]: _, ...colors } = f.colors ?? {};
-      saveFolders(machine, { ...f, colors: color ? { ...colors, [colorId]: color } : colors });
+      saveFolders(machine, (data) => {
+        const { [colorId]: _, ...colors } = data.colors ?? {};
+        return { ...data, colors: color ? { ...colors, [colorId]: color } : colors };
+      });
       if (!color) {
         const { [machine ? `${machine}/${colorId}` : colorId]: _gone, ...rest } = shared("space.colors") ?? {};
         setShared("space.colors", rest);
