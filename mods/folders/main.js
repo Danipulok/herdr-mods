@@ -181,21 +181,22 @@ function machineFolder(m, rows, ps) {
   return folders(null).list.find((f) => collects(f, m) || rows.some((r) => collects(f, place(r.w, ps))))?.id ?? null;
 }
 
-// `change` maps a machine's folders to the next ones. It is shown at once, then
-//  written onto the newer of the file and this copy, one save at a time per
-//  machine: Ovis writes the file too, and a copy older than it would undo that.
+// `change` maps a machine's folders to the next ones. It is shown at once and
+//  written one save at a time per machine; a file written since the copy it was
+//  made from (Ovis writes it too) gets `change` instead, or the save would undo that.
 const saving = {};
 function saveFolders(machine, change) {
   const next = (data) => {
     const changed = change(data);
     return { list: changed.list, of: changed.of, archive: changed.archive ?? [], colors: changed.colors ?? data.colors ?? {}, at: Date.now() };
   };
-  setShared("space-folders", { ...all(), [key(machine)]: next(folders(machine)) });
+  const base = folders(machine), shown = next(base);
+  setShared("space-folders", { ...all(), [key(machine)]: shown });
 
   saving[key(machine)] = (saving[key(machine)] ?? Promise.resolve()).then(async () => {
-    const read = await readFolders(machine).catch(() => null), now = folders(machine);
-    const data = next(read && read.at > now.at ? read : now);
-    setShared("space-folders", { ...all(), [key(machine)]: data });
+    const read = await readFolders(machine).catch(() => null);
+    const data = read && read.at > (base.at ?? 0) ? next(read) : shown;
+    if (data !== shown) setShared("space-folders", { ...all(), [key(machine)]: data });
 
     await exec("sh", ["-c", `mkdir -p ~/.config && printf '%s\\n' "$1" > ${FILE}.tmp && mv ${FILE}.tmp ${FILE}`, "sh", JSON.stringify(data)], { on: machine });
   }).catch(() => null);
