@@ -26,4 +26,6 @@ just deploy
 herdr-app do layout.switch --name my-t3
 ```
 
+A running herdr-app picks up a deployed mod at once, with no restart.
+
 The other `t3-*` mods (agents, inbox, tabs) come from `herdr-t3` itself and are installed as its README says.
