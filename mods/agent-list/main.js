@@ -30,17 +30,30 @@ function duration(ms) {
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
 
-// What still runs behind an agent that reads as idle: Claude Code's footer
-//  counts it, as in `⏵⏵ auto mode on · 1 shell · ↓ to manage`.
-function background(screen) {
-  const footer = screen.trimEnd().split("\n").at(-1) ?? "";
-  return footer.split(/ · |, /).map((part) => part.trim()).filter((part) => /^\d+ [a-z][a-z ]*$/.test(part)).join(", ");
+// Claude Code's lines under its last rule: the footer, as in `⏵⏵ auto mode on · 1 shell · ↓ to manage`,
+//  then one line per running workflow, as in `◯ harness-review-round  ░░░░  0/8 · 8m29s · ↓ 1.4m tokens`.
+function bottom(screen) {
+  const lines = screen.trimEnd().split("\n").map((line) => line.trim());
+  let rule = lines.length - 1;
+  while (rule >= 0 && !/^─+$/.test(lines[rule])) rule -= 1;
+  return lines.slice(rule + 1).filter(Boolean);
+}
+
+// What still runs behind an agent that reads as idle: the footer counts it.
+function background(lines) {
+  return lines.flatMap((line) => line.split(/ · |, /)).map((part) => part.trim()).filter((part) => /^\d+ [a-z][a-z ]*$/.test(part)).join(", ");
+}
+
+// Each running workflow's name and the steps done, `["harness-review-round", "0/8"]`.
+function workflows(lines) {
+  return lines.map((line) => /^\S\s+(\S+)\s+[░▒▓█]+\s+(\d+\/\d+)/.exec(line)).filter(Boolean).map(([, name, done]) => [name, done]);
 }
 
 export default class Agents extends View {
   init(_props, cx) {
     if (props()?.sortMenu) return;
     this.background = {};
+    this.workflows = {};
     cx.timer.every(5000, (cx) => this.readBackground(cx));
     this.folded = JSON.parse(localStorage.getItem("folded") ?? "{}");
     // Each agent's last state and when it changed (ms), kept across restarts.
@@ -49,18 +62,24 @@ export default class Agents extends View {
     if (shared("agents.pins") == null && localStorage.getItem("pins")) setShared("agents.pins", JSON.parse(localStorage.getItem("pins")));
   }
 
-  // Only idle and done agents: a working one's footer changes every second and its status says enough.
+  // Counts only for idle and done agents, where the status hides them; a workflow for every agent.
   readBackground(cx) {
     cx.spawn(async (cx) => {
       const found = {};
-      for (const agent of agents().filter((each) => each.status === "idle" || each.status === "done")) {
+      const running = {};
+      for (const agent of agents()) {
         const reply = await hc(["read", agent.address]).catch(() => null);
-        if (reply?.code === 0) found[agent.address] = background(reply.stdout);
+        if (reply?.code !== 0) continue;
+
+        const lines = bottom(reply.stdout);
+        if (agent.status === "idle" || agent.status === "done") found[agent.address] = background(lines);
+        running[agent.address] = workflows(lines);
       }
 
-      if (JSON.stringify(found) === JSON.stringify(this.background)) return;
+      if (JSON.stringify([found, running]) === JSON.stringify([this.background, this.workflows])) return;
 
       this.background = found;
+      this.workflows = running;
       cx.notify();
     });
   }
@@ -363,6 +382,10 @@ export default class Agents extends View {
         .child(h_flex().id(`controls-${a.address}`).flex_none().items_center().gap(4)
           .when(subs.length > 0, el => el.child(fold(a, subs)))
           .when((st === "idle" || st === "done") && Boolean(this.background[a.address]), el => el.child(div().id(`bg-${a.address}`).text_size(11).text_color(t.working).child(this.background[a.address])))
+          // The name gives way first, so the row's own name and the steps done stay readable.
+          .children((this.workflows[a.address] ?? []).map(([flow, done], index) => h_flex().id(`wf-${a.address}-${index}`).min_w(0).gap(4).text_size(11).text_color(t.working)
+            .child(div().min_w(0).max_w(90).truncate().child(flow))
+            .child(div().flex_none().child(done))))
           // The time and the pin share one slot at least the pin's width, so hovering moves nothing else.
           .child(this.hovered === a.address ? pin
             : h_flex().id(`when-${a.address}`).min_w(20).flex_none().justify_end().text_size(11).text_color(t.dim).when(Boolean(when), el => el.child(duration(now - when))))

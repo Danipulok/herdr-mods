@@ -3,7 +3,7 @@
 Mods and a layout for the Herdr desktop app (`herdr-app`).
 
 - `mods/folders`: the spaces list with folders you make and name yourself, worktrees folded under their checkout, and the T3 look.
-- `mods/agent-list`: the `herdr-t3` agents list, plus what an idle or done Claude Code agent still runs in the background (`1 shell`, `2 monitors`), read from its footer every 5 seconds.
+- `mods/agent-list`: the `herdr-t3` agents list, plus what an idle or done Claude Code agent still runs in the background (`1 shell`, `2 monitors`) and any agent's running workflows with their steps done (`harness-review-round 0/8`), read from its footer every 5 seconds.
 - `layouts/my-t3.json`: the `herdr-t3` layout with its spaces block pointed at `folders` and its agents block at `agent-list`.
 - `keys.json`: the keys of the `layout:my-t3` section; `just deploy` merges them into the app's `keys.json`.
 
