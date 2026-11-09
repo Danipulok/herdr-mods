@@ -115,7 +115,7 @@ async function restore(machine, entry) {
     const r = c.cwd ? await exec("test", ["-d", c.cwd], { on: machine }).catch(() => null) : { code: 0 };
     if (r?.code !== 0) {
       notify({ title: `Can't restore ${entry.label}`, body: `${c.cwd} is gone.`, level: "error" });
-      return;
+      return false;
     }
   }
 
@@ -127,6 +127,15 @@ async function restore(machine, entry) {
   run("space.new", { ...(machine ? { machine } : {}), ...(entry.name ? { name: entry.name } : {}), ...(first.name ? { tab: first.name } : {}), ...start(first) });
   // Herdr names no id back, and the new space is the one in front.
   for (const c of rest) run("tab.new", { ...(c.name ? { name: c.name } : {}), ...start(c) });
+  return true;
+}
+
+const JOB = "folders.job";
+
+// Hands a menu's action to the sidebar (see its `job`).
+function sidebarJob(job) {
+  setShared(JOB, job);
+  run("folders.job");
 }
 
 function forget(machine, id) {
@@ -347,8 +356,37 @@ export default class Spaces extends View {
         // "folders.archive": the space in front.
         const front = c === "archive" && spaces().find((w) => w.active);
         if (front) archive(front, this.seen.find((e) => e.id === front.id)?.folder ?? null);
+        if (c === "job") this.job(cx);
         cx.notify();
       }
+    });
+  }
+
+  // A menu's action runs here: Herdr cancels a closed popup's unfinished tasks,
+  //  which stopped archive and restore at their first `exec` (its `AGENTS.md`, "Cleanup").
+  job(cx) {
+    const job = shared(JOB);
+    setShared(JOB, null);
+    if (job?.do === "archive") {
+      const space = spaces().find((x) => x.id === job.id);
+      if (space) archive(space, job.folder);
+    }
+
+    if (job?.do === "restore") {
+      const entry = (folders(job.machine).archive ?? []).find((x) => x.id === job.id);
+      if (entry) this.restore(job.machine, entry, cx);
+    }
+  }
+
+  // A space taken back folds the archive it was in.
+  restore(machine, entry, cx) {
+    cx.spawn(async (cx) => {
+      if (!await restore(machine, entry)) return;
+      const shown = folders(machine).list.some((x) => x.id === entry.folder) ? entry.folder : null;
+      if (!this.openArchives.delete(`${machine ?? ""}/${shown ?? ""}`)) return;
+
+      localStorage.setItem("archive.open", JSON.stringify([...this.openArchives]));
+      cx.notify();
     });
   }
 
@@ -882,7 +920,7 @@ export default class Spaces extends View {
         .child(item("space-worktree-new", "New worktree", "git-branch", worktree("new", { width: 440, height: 260 })))
         .child(item("space-worktree-open", "Open worktree", "git-branch", worktree("open", { width: 560, height: 480 }))))
       .when(git === "linked", (el) => el.child(item("space-worktree-remove", "Remove worktree", "git-branch", worktree("remove", { width: 440, height: 260 }))))
-      .child(item("space-archive", "Archive", "archive", () => archive(s, folder)))
+      .child(item("space-archive", "Archive", "archive", () => sidebarJob({ do: "archive", id, folder })))
       .child(item("space-close", "Close", "x", () => run("space.close", { id }), t.ansi1));
   }
 
@@ -894,7 +932,7 @@ export default class Spaces extends View {
       .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); if (entry) action(); })
       .child(svg(icon).size(13).flex_none().text_color(tone ?? t.muted)).child(label);
     return v_flex().id("archived-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
-      .child(item("archived-restore", "Restore", "mods/folders/archive-restore.svg", () => restore(machine, entry)))
+      .child(item("archived-restore", "Restore", "mods/folders/archive-restore.svg", () => sidebarJob({ do: "restore", machine, id })))
       .child(item("archived-delete", "Delete", "mods/folders/trash.svg", () => forget(machine, id), t.ansi1));
   }
 
@@ -1143,7 +1181,7 @@ export default class Spaces extends View {
     return h_flex().id(id).size(20).flex_none().items_center().justify_center().rounded(4).text_color(t.dim)
       .role("button").accessibility_label(label).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => { cx.stop_propagation(); action(); })
+      .on_click((_e, cx) => { cx.stop_propagation(); action(cx); })
       .child(svg(icon).size(12));
   }
 
@@ -1175,7 +1213,7 @@ export default class Spaces extends View {
       .child(h_flex().size(18).flex_none().rounded(5).bg(t.input).items_center().justify_center().text_size(11).font_bold()
         .child([...e.label][0]?.toUpperCase() ?? "?"))
       .child(div().flex_1().min_w(0).truncate().child(e.label))
-      .child(this.hovered === e.id ? this.tool(`archived-restore-${e.id}`, `Restore ${e.label}`, "mods/folders/archive-restore.svg", t, () => restore(machine, e))
+      .child(this.hovered === e.id ? this.tool(`archived-restore-${e.id}`, `Restore ${e.label}`, "mods/folders/archive-restore.svg", t, (cx) => this.restore(machine, e, cx))
         : div().flex_none().text_size(11).text_color(t.dim).child(ago(e.at)));
   }
 
