@@ -142,6 +142,10 @@ function forget(machine, id) {
   saveFolders(machine, (f) => ({ ...f, archive: (f.archive ?? []).filter((e) => e.id !== id) }));
 }
 
+// An avatar's letter, nudged onto the tile's centre: centred as text, it sat about
+//  1px left of it and 0.5px above (measured on `herdr-app shot` at 1.33 scale).
+const initial = (name) => div().relative().left(0.75).top(0.375).child([...name][0]?.toUpperCase() ?? "?");
+
 const ago = (at) => {
   const m = Math.floor((Date.now() - at) / 60000);
   return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
@@ -1159,7 +1163,7 @@ export default class Spaces extends View {
             .role("button").accessibility_label(folded ? "Expand worktrees" : "Collapse worktrees")
             .on_mouse_down("left", stop).on_click(toggle)
             .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(12).text_color(t.foreground))))
-          .when(!tree && !(kids > 0 && this.hovered === w.id), el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(11).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(!tree && !(kids > 0 && this.hovered === w.id), el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(11).font_bold().text_color("#ffffff").child(initial(w.name))))
           .child(div().min_w(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
           .child(g ? this.gitTail(g, tree, w, t) : div().flex_1())
           .when(folded, el => el.child(div().id(`space-count-${w.id}`).h(20).min_w(20).px(4).flex_none().flex().items_center().justify_center().rounded(4)
@@ -1211,7 +1215,7 @@ export default class Spaces extends View {
       .on_hover((over, cx) => this.hover(e.id, over, cx))
       .on_mouse_down("right", (_e, cx) => { this.hovered = null; cx.notify(); openOverlay({ mod: "folders", kind: "popup", width: 210, height: 80, props: { archivedMenu: e.id, machine } }); })
       .child(h_flex().size(18).flex_none().rounded(5).bg(t.input).items_center().justify_center().text_size(11).font_bold()
-        .child([...e.label][0]?.toUpperCase() ?? "?"))
+        .child(initial(e.label)))
       .child(div().flex_1().min_w(0).truncate().child(e.label))
       .child(this.hovered === e.id ? this.tool(`archived-restore-${e.id}`, `Restore ${e.label}`, "mods/folders/archive-restore.svg", t, (cx) => this.restore(machine, e, cx))
         : div().flex_none().text_size(11).text_color(t.dim).child(ago(e.at)));
