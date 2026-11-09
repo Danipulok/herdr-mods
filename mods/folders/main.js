@@ -903,7 +903,7 @@ export default class Spaces extends View {
       }
       closeOverlay(overlay);
     };
-    const swatch = (color) => div().id(`space-color-${color ?? "auto"}`).size(20).flex_none().rounded(5).cursor_pointer()
+    const swatch = (color) => div().id(`space-color-${color ?? "auto"}`).size(20).flex_none().rounded(10).cursor_pointer()
       .bg(color ? MARK[color] : t.input).border_2().border_color(color === current ? t.foreground : t.popover)
       .hover((el) => el.border_color(t.muted)).on_click(() => paint(color))
       .when(!color, (el) => el.flex().items_center().justify_center().text_size(9).text_color(t.muted).child("A"));
@@ -1144,7 +1144,7 @@ export default class Spaces extends View {
         else if (from === i) select(w);
         cx.notify();
       })
-      .on_mouse_down("right", () => this.menu(w, folder))
+      .on_mouse_down("right", (_e, cx) => { this.hovered = null; cx.notify(); this.menu(w, folder); })
       // The same tree lines as sub-agents: from the checkout's avatar center, turning into the branch icon.
       .when(tree === "├─", el => el.child(div().absolute().left(line).top(0).bottom(0).w(1.5).bg(t.input)))
       .when(Boolean(tree), el => el.child(div().absolute().left(line).top(-4).h(19).w(9.75).border_l(1.5).border_b(1.5).rounded_bl(6).border_color(t.input)))
@@ -1209,7 +1209,7 @@ export default class Spaces extends View {
     return h_flex().id(`archived-${e.id}`).h(30).flex_none().pl(indent).pr(8).gap(8).items_center().rounded(8)
       .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_hover((over, cx) => this.hover(e.id, over, cx))
-      .on_mouse_down("right", () => openOverlay({ mod: "folders", kind: "popup", width: 210, height: 80, props: { archivedMenu: e.id, machine } }))
+      .on_mouse_down("right", (_e, cx) => { this.hovered = null; cx.notify(); openOverlay({ mod: "folders", kind: "popup", width: 210, height: 80, props: { archivedMenu: e.id, machine } }); })
       .child(h_flex().size(18).flex_none().rounded(5).bg(t.input).items_center().justify_center().text_size(11).font_bold()
         .child([...e.label][0]?.toUpperCase() ?? "?"))
       .child(div().flex_1().min_w(0).truncate().child(e.label))
