@@ -3,7 +3,8 @@
 Mods and a layout for the Herdr desktop app (`herdr-app`).
 
 - `mods/folders`: the spaces list with folders you make and name yourself, worktrees folded under their checkout, and the T3 look.
-- `layouts/my-t3.json`: the `herdr-t3` layout with its spaces block pointed at `folders`.
+- `mods/agent-list`: the `herdr-t3` agents list, plus what an idle or done Claude Code agent still runs in the background (`1 shell`, `2 monitors`), read from its footer every 5 seconds.
+- `layouts/my-t3.json`: the `herdr-t3` layout with its spaces block pointed at `folders` and its agents block at `agent-list`.
 - `keys.json`: the keys of the `layout:my-t3` section; `just deploy` merges them into the app's `keys.json`.
 
 ## Where the code comes from
@@ -12,6 +13,7 @@ Mods and a layout for the Herdr desktop app (`herdr-app`).
 |---|---|---|
 | `mods/folders` base | [jankeesvw/herdr-space-folders](https://github.com/jankeesvw/herdr-space-folders) `mods/space-folders` | `d630695db04d852ec89d86dd284f603d133dbba5` |
 | T3 changes in `mods/folders` | [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3) `mods/t3-spaces` | `8b8506341a3aa285041f32e757bd48ef67c916bb` |
+| `mods/agent-list` base | [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3) `mods/t3-agents` | `8b8506341a3aa285041f32e757bd48ef67c916bb` |
 | `layouts/my-t3.json` | [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3) `layouts/herdr-t3.json` | `8b8506341a3aa285041f32e757bd48ef67c916bb` |
 | Both of the above | [herdrdev/herdr-app](https://github.com/herdrdev/herdr-app) `defaults/mods/spaces` and `defaults/layouts/main.json` | tag `v0.1.10` |
 
@@ -28,4 +30,4 @@ herdr-app do layout.switch --name my-t3
 
 A running herdr-app picks up a deployed mod at once, with no restart.
 
-The other `t3-*` mods (agents, inbox, tabs) come from `herdr-t3` itself and are installed as its README says.
+The other `t3-*` mods (inbox, tabs) come from `herdr-t3` itself and are installed as its README says.

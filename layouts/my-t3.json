@@ -44,7 +44,7 @@
                   "type": "block",
                   "size": { "weight": 1 },
                   "min": 90,
-                  "content": { "mod": "t3-agents" }
+                  "content": { "mod": "agent-list" }
                 }
               ]
             },
