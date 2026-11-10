@@ -201,7 +201,7 @@ const saving = {};
 function saveFolders(machine, change) {
   const next = (data) => {
     const changed = change(data);
-    return { list: changed.list, of: changed.of, archive: changed.archive ?? [], colors: changed.colors ?? data.colors ?? {}, at: Date.now() };
+    return { list: changed.list, of: changed.of, archive: changed.archive ?? [], colors: changed.colors ?? data.colors ?? {}, pins: changed.pins ?? data.pins ?? {}, at: Date.now() };
   };
   const base = folders(machine), shown = next(base);
   setShared("space-folders", { ...all(), [key(machine)]: shown });
@@ -239,11 +239,33 @@ function select(s) {
 // The sidebar's rail goes by its width, not a flag: dragging its edge narrows it too.
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 
-// Where a space is now: its first terminal's live folder, else where it was made.
-// `ps`: panes(), read once by the caller (each read copies every pane).
+// Where a space is now: the folder pinned from its menu, else its first terminal's
+//  live folder, else where it was made. A pane's live folder drops back to where its
+//  terminal was made whenever herdr-app reads neither the program in front nor the
+//  shell, which sent a space working in `~/Empty/harness-improve` to `~/Empty`; so
+//  a space last seen inside that folder stays there until it is somewhere else.
+//  `ps`: `panes()`, read once by the caller (each read copies every pane).
+const lastPlace = new Map();
 function place(s, ps) {
+  const pinned = folders(s.machine).pins?.[localId(s)];
+  if (pinned) return pinned;
+
   const tabs = new Set((s.tabs ?? []).map((c) => c.id));
-  return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
+  const live = ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
+  const last = lastPlace.get(s.id);
+  if (last && live === s.folder && last.startsWith(`${s.folder.replace(/\/+$/, "")}/`)) return last;
+
+  lastPlace.set(s.id, live);
+  return live;
+}
+
+// A space's folder set by hand, or `null` to follow its terminals again.
+function pin(s, folder) {
+  const spaceId = localId(s);
+  saveFolders(s.machine ?? null, (data) => {
+    const { [spaceId]: _, ...pins } = data.pins ?? {};
+    return { ...data, pins: folder ? { ...pins, [spaceId]: folder } : pins };
+  });
 }
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
 const base = (path) => path.replace(/\/+$/, "").split("/").pop();
@@ -380,6 +402,17 @@ export default class Spaces extends View {
       const entry = (folders(job.machine).archive ?? []).find((x) => x.id === job.id);
       if (entry) this.restore(job.machine, entry, cx);
     }
+
+    if (job?.do === "pin") this.pinPicked(job.id, cx);
+  }
+
+  // The system's folder picker, for a space on this computer.
+  pinPicked(id, cx) {
+    cx.spawn(async () => {
+      const picked = await pickFolder({ prompt: "Space folder" });
+      const space = spaces().find((x) => x.id === id);
+      if (picked && space) pin(space, picked);
+    });
   }
 
   // A space taken back folds the archive it was in.
@@ -552,7 +585,7 @@ export default class Spaces extends View {
   menu(w, folder) {
     const g = this.git[where(w, panes())] ?? null;
     // A popup is as tall as its items; height is only the most.
-    openOverlay({ mod: "folders", kind: "popup", width: 236, height: 300, props: { spaceMenu: w.id, machine: w.machine ?? null, git: g ? (g.linked ? "linked" : "main") : null, folder } });
+    openOverlay({ mod: "folders", kind: "popup", width: 236, height: 340, props: { spaceMenu: w.id, machine: w.machine ?? null, git: g ? (g.linked ? "linked" : "main") : null, folder } });
   }
 
   // ---- folders ----
@@ -924,6 +957,8 @@ export default class Spaces extends View {
         .child(item("space-worktree-new", "New worktree", "git-branch", worktree("new", { width: 440, height: 260 })))
         .child(item("space-worktree-open", "Open worktree", "git-branch", worktree("open", { width: 560, height: 480 }))))
       .when(git === "linked", (el) => el.child(item("space-worktree-remove", "Remove worktree", "git-branch", worktree("remove", { width: 440, height: 260 }))))
+      .when(!machine, (el) => el.child(item("space-pin", "Set folder…", "pin", () => sidebarJob({ do: "pin", id }))))
+      .when(Boolean(f.pins?.[colorId]), (el) => el.child(item("space-unpin", "Follow terminals", "pin-off", () => pin(s, null))))
       .child(item("space-archive", "Archive", "archive", () => sidebarJob({ do: "archive", id, folder })))
       .child(item("space-close", "Close", "x", () => run("space.close", { id }), t.ansi1));
   }
