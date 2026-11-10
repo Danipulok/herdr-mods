@@ -4,6 +4,12 @@ The [Herdr T3](https://github.com/JinJieBeWater/herdr-t3) window with two lists 
 
 ![herdr-mods](preview.png)
 
+# Short instructions for your AI agent
+
+```text
+Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, with the requirements its README lists
+```
+
 ## What you see
 
 The window is herdr-t3's, as its [recipe](https://github.com/JinJieBeWater/herdr-t3/blob/8b8506341a3aa285041f32e757bd48ef67c916bb/RECIPE.md) describes: brand bar, sidebar, tabs, panes, agent view. Only the two lists in the sidebar's Lists half differ, split 1:1, each at least 90px.
