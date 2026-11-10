@@ -2,6 +2,8 @@
 
 Two mods and a layout for the [Herdr](https://herdr.dev) desktop app (`herdr-app`): a spaces list with folders, and an agents list that shows what a Claude Code agent still runs in the background.
 
+Listed in the [Herdr gallery](https://herdr.dev/gallery/) under Community.
+
 <img src="docs/screenshot.png" width="300" alt="The folders list above the agents list, in the my-t3 layout">
 
 # Short instructions for your AI agent
