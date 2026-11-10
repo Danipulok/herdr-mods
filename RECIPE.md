@@ -23,7 +23,7 @@ The window is herdr-t3's, as its [recipe](https://github.com/JinJieBeWater/herdr
   - Narrower than 160px, the list draws the compact rail of avatars instead.
 - **Agents** (`agent-list` mod):
   - A heading `Agents` with a 26px sort button (clock icon for Priority, layers for Grouped by space).
-  - By priority: sections `Needs you` (`blocked` color), `Done` (`done`), `Working` (`working`) and `Idle` (dim), each with its count. Idle starts folded. Grouped: one section per space, named after it.
+  - By priority: sections `Needs you` (`blocked` color), `Done` (`done`), `Working` (`working`), `Background` (`working`, idle agents whose footer still counts a shell, monitor or workflow) and `Idle` (dim), each with its count. Idle starts folded. Grouped: one section per space, named after it.
   - A 30px row per agent: the program icon, what it is on (its named tab, a telling title, else the program), its space dim when the section does not say it, the machine for a remote agent, then the background counts and workflows in the `working` color, the time in its state (`<1m`, `5m`, `3h`, `2d`), and a 14px state mark flush right.
   - Sub-agents indented 20px per level under their parent, with tree lines.
 

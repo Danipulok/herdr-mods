@@ -12,8 +12,10 @@ const SORTS = [
   { id: "grouped", label: "Grouped by space", icon: "layers" },
 ];
 const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[0];
-const SECTION = { 4: "Needs you", 3: "Done", 2: "Working", 1: "Idle" };
-const SECTION_STATUS = { 4: "blocked", 3: "done", 2: "working" };
+// Off the whole numbers, so each stored `sec-<rank>` fold stays on its section.
+const BACKGROUND = 1.5;
+const SECTION = { 4: "Needs you", 3: "Done", 2: "Working", [BACKGROUND]: "Background", 1: "Idle" };
+const SECTION_STATUS = { 4: "blocked", 3: "done", 2: "working", [BACKGROUND]: "working" };
 
 // The agent's icon from the app's program table: a one-color glyph or a picture.
 function icon(p, size, color) {
@@ -258,7 +260,9 @@ export default class Agents extends View {
     // As shown: its own word with its sub-agents'. Sorted, a viewed done agent keeps Done.
     const own = (a) => ownStatus(a.status, a.address, all);
     const shownStatus = (a) => treeStatus(own(a), kidsOf.get(a.address));
-    const urgency = new Map(list.map((a) => [a.address, RANK[treeStatus(ownStatus(this.word(a), a.address, all), kidsOf.get(a.address))] ?? 0]));
+    const busy = (a) => Boolean(this.background[a.address]) || (this.workflows[a.address] ?? []).length > 0;
+    const rankWithBackground = (a, rank) => (rank === RANK.idle && busy(a) ? BACKGROUND : rank);
+    const urgency = new Map(list.map((a) => [a.address, rankWithBackground(a, RANK[treeStatus(ownStatus(this.word(a), a.address, all), kidsOf.get(a.address))] ?? 0)]));
     const rankOf = (a) => urgency.get(a.address);
     if (byPriority) list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
     this.prune(all);
