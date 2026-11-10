@@ -735,9 +735,10 @@ export default class Spaces extends View {
     this.fields = ["name", "path"];
     this.name = InputState.new({ value: space?.name ?? "" });
 
-    const pinned = space ? folders(machine).pins?.[localId(space)] ?? "" : "";
-    const live = space ? place({ ...space, machine }, panes()) : "";
-    this.path = InputState.new({ value: pinned, placeholder: live ? `Following its terminals: ${live}` : "Following its terminals" });
+    const pinned = space ? folders(machine).pins?.[localId(space)] ?? null : null;
+    this.live = space ? place({ ...space, machine }, panes()) : "";
+    this.path = InputState.new({ value: pinned ?? this.live, placeholder: "Empty: follow its terminals" });
+    if (space && !pinned) this.fillSessionFolder(space, machine, cx);
 
     this.mirror = false;
     this.nameMirror = false;
@@ -758,19 +759,40 @@ export default class Spaces extends View {
     cx.timer.after(300, () => this.path.focus());
   }
 
-  // A name left as shown renames nothing, so a space nobody named keeps following its folder.
+  // The folder the space's last Claude Code session started in, which `hc-resume.py`
+  //  records per terminal; a terminal's own folder stays at the one it was made in.
+  fillSessionFolder(space, machine, cx) {
+    const terminals = agents().filter((a) => a.space === space.id).map((a) => a.address);
+    if (terminals.length === 0) return;
+
+    const script = 'cd "${XDG_STATE_HOME:-$HOME/.local/state}/claude-hc-resume/${HC_SESSION:-default}" 2>/dev/null && ls -t -- "$@" 2>/dev/null | head -1 | xargs -r sed -n 2p';
+    cx.spawn(async (cx) => {
+      const r = await exec("sh", ["-c", script, "sh", ...terminals], { on: machine }).catch(() => null);
+      const folder = r?.code === 0 ? r.stdout.trim() : "";
+      if (!folder || this.path.value() !== this.live) return;
+
+      this.live = folder;
+      this.path.set_value(folder);
+      cx.notify();
+    });
+  }
+
+  // A folder left as found pins nothing, so the space keeps following its terminals;
+  //  a name left as shown renames nothing, so a space nobody named keeps following its folder.
   saveSpace(cx) {
     const { space: id, machine, overlay } = this.editing;
     const space = spaces().find((x) => x.id === id);
     if (!space) return closeOverlay(overlay);
 
     const name = this.name.value().trim(), folder = this.path.value().trim();
+    const pinned = folders(machine).pins?.[localId(space)] ?? null;
     const save = (full) => {
       if (name && name !== space.name) run("space.rename", { id, name });
-      pin(space, full);
+      if (full !== pinned) pin(space, full);
       closeOverlay(overlay);
     };
     if (!folder) return save(null);
+    if (!pinned && folder === this.live && folder === place({ ...space, machine }, panes())) return save(null);
 
     cx.spawn(async (cx) => {
       const full = await expand(machine, folder).catch(() => null);
@@ -787,7 +809,7 @@ export default class Spaces extends View {
       .on_key_down((e, cx) => this.editKey(e, cx))
       .child(div().text_size(15).font_semibold().child("Edit space"))
       .child(field("Name", this.name, null))
-      .child(field("Folder", this.path, "Its folder, git status and folder rules go by this one. Empty: the folder its first terminal works in.",
+      .child(field("Folder", this.path, "Its folder, git status and folder rules go by this one. Filled with where its last Claude Code session started.",
         machine ? null : button("space-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
       .when(this.hintFor === "path" && this.hints.length > 0, (el) => el.child(this.hintList("path", t)))
       .when(Boolean(this.problem), (el) => el.child(div().text_size(12).text_color(t.ansi1).child(this.problem)))
