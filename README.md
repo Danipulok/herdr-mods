@@ -13,7 +13,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 ## What is in it
 
 - `mods/folders` replaces the spaces list. You make folders, name and color them, and drag spaces into them. A folder can start its new spaces in a given directory and collect every space that works in a directory matching its rules (`web`, `~/code/client-*`). Worktrees sit under their checkout. Right-click a space to edit its name and folder, pull, make or open a worktree, archive it or close it. An archived space keeps its tabs and folders, and Restore opens it again.
-- `mods/agent-list` replaces the agents list. It sorts agents by priority (needs you, done, working, idle) or groups them by space, and shows sub-agents under their parent. For a Claude Code agent it reads the footer every 5 seconds and shows what still runs behind it (`1 shell`, `2 monitors`) and each running workflow with its steps done (`0/8`).
+- `mods/agent-list` replaces the agents list. It sorts agents by priority (needs you, done, working, background, idle) or groups them by space, and shows sub-agents under their parent. For a Claude Code agent it reads the footer every 5 seconds and shows what still runs behind it (`1 shell`, `2 monitors`) and each running workflow with its steps done (`0/8`).
 - `layouts/my-t3.json` is the `herdr-t3` layout with its spaces block pointed at `folders` and its agents block at `agent-list`.
 - `keys.json` holds the keys of the `layout:my-t3` section. `alt-up` and `alt-down` walk the spaces in folder order, and `ctrl-shift-w` or `cmd-shift-w` archives the space in front.
 
