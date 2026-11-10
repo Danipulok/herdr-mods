@@ -2,6 +2,8 @@
 
 Two mods and a layout for the [Herdr](https://herdr.dev) desktop app (`herdr-app`): a spaces list with folders, and an agents list that shows what a Claude Code agent still runs in the background.
 
+<img src="docs/screenshot.png" width="300" alt="The folders list above the agents list, in the my-t3 layout">
+
 ## What is in it
 
 - `mods/folders` replaces the spaces list. You make folders, name and color them, and drag spaces into them. A folder can start its new spaces in a given directory and collect every space that works in a directory matching its rules (`web`, `~/code/client-*`). Worktrees sit under their checkout. Right-click a space to edit its name and folder, pull, make or open a worktree, archive it or close it. An archived space keeps its tabs and folders, and Restore opens it again.
