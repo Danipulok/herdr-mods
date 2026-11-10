@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/Danipulok/herdr-mods/compare/v1.0.0...v1.1.0) (2026-11-10)
+
+
+### Features
+
+* **agent-list:** put idle agents with a running shell, monitor or workflow in a `Background` section above `Idle` ([0a5f1e4](https://github.com/Danipulok/herdr-mods/commit/0a5f1e42c2bb72b542dcaa2905c5e2263841be15))
+
 ## 1.0.0 (2026-11-10)
 
 
