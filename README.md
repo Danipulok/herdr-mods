@@ -80,7 +80,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 <img src="docs/features/agents-pinned.png" width="350" alt="A pinned agent in a Pinned group on top">
 
 - Sections by priority: Needs you, Done, Working, Background, Idle, each with its count. Idle starts folded.
-- Background holds idle agents that still run a shell, a monitor or a workflow.
+- Background holds idle and done agents that still run a shell, a monitor or a workflow, so a finished turn with work left behind it goes straight there.
 - The sort button switches to grouping by space.
 - Each row: what the agent is on (its tab name, a telling title, else the program), its space when the section does not say it, the machine for a remote agent, the time in its state, and a state mark: a spinner, a `!` badge, a dot or a ring.
 - For a Claude Code agent the list reads its footer every 5 seconds and shows what still runs behind it (`1 shell, 2 monitors`) and each running workflow with its steps done (`review-round 2/5`).

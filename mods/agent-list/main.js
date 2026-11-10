@@ -261,7 +261,7 @@ export default class Agents extends View {
     const own = (a) => ownStatus(a.status, a.address, all);
     const shownStatus = (a) => treeStatus(own(a), kidsOf.get(a.address));
     const busy = (a) => Boolean(this.background[a.address]) || (this.workflows[a.address] ?? []).length > 0;
-    const rankWithBackground = (a, rank) => (rank === RANK.idle && busy(a) ? BACKGROUND : rank);
+    const rankWithBackground = (a, rank) => ((rank === RANK.idle || rank === RANK.done) && busy(a) ? BACKGROUND : rank);
     const urgency = new Map(list.map((a) => [a.address, rankWithBackground(a, RANK[treeStatus(ownStatus(this.word(a), a.address, all), kidsOf.get(a.address))] ?? 0)]));
     const rankOf = (a) => urgency.get(a.address);
     if (byPriority) list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
