@@ -296,16 +296,33 @@ const lastPart = (p) => {
   return part === "~" ? "" : part;
 };
 
+// The buttons and labelled fields of the folder and space dialogs.
+function dialogParts(t) {
+  const button = (key, label, primary, action) => h_flex().id(key).h(32).px(14).flex_none().items_center().rounded(8).border_1()
+    .border_color(primary ? t.solid : t.input).bg(primary ? t.solid : t.raised).text_color(primary ? t.solid_foreground : t.foreground)
+    .text_size(12.5).font_medium().cursor_pointer().hover((s) => s.opacity(0.88)).on_click(action).child(label);
+  const field = (label, input, hint, extra = null) => v_flex().gap(6)
+    .child(div().text_size(12).font_medium().text_color(t.muted).child(label))
+    .child(h_flex().gap(8)
+      .child(div().flex_1().min_w(0).h(34).px(10).flex().items_center().rounded(8).border_1().border_color(t.input).bg(t.background)
+        .child(Input.new(input).w_full().text_size(13).text_color(t.foreground)))
+      .when(Boolean(extra), (el) => el.child(extra)))
+    .when(Boolean(hint), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(hint)));
+  return { button, field };
+}
+
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, archivedMenu, spaceMenu, git = null, folder = null, edit, machine = null, fresh = false, overlay } = props() ?? {};
+    const { folderMenu, archivedMenu, spaceMenu, editSpace, git = null, folder = null, edit, machine = null, fresh = false, overlay } = props() ?? {};
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (archivedMenu) { this.archivedMenu = { id: archivedMenu, machine, overlay }; return; }
     if (spaceMenu) { this.spaceMenu = { id: spaceMenu, machine, git, folder, overlay }; return; }
+    if (editSpace) { this.editSpace(editSpace, machine, overlay, cx); return; }
     if (edit) {
       const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
       this.editing = { id: edit, machine, fresh, overlay };
+      this.fields = FIELDS;
       this.name = InputState.new({ value: f.name ?? "" });
       this.path = InputState.new({ value: f.path ?? "", placeholder: "e.g. ~/Documents/github.com/owner/repo" });
       this.match = InputState.new({ value: f.match ?? "", placeholder: "e.g. web, ~/code/client-*" });
@@ -402,17 +419,6 @@ export default class Spaces extends View {
       const entry = (folders(job.machine).archive ?? []).find((x) => x.id === job.id);
       if (entry) this.restore(job.machine, entry, cx);
     }
-
-    if (job?.do === "pin") this.pinPicked(job.id, cx);
-  }
-
-  // The system's folder picker, for a space on this computer.
-  pinPicked(id, cx) {
-    cx.spawn(async () => {
-      const picked = await pickFolder({ prompt: "Space folder" });
-      const space = spaces().find((x) => x.id === id);
-      if (picked && space) pin(space, picked);
-    });
   }
 
   // A space taken back folds the archive it was in.
@@ -585,7 +591,7 @@ export default class Spaces extends View {
   menu(w, folder) {
     const g = this.git[where(w, panes())] ?? null;
     // A popup is as tall as its items; height is only the most.
-    openOverlay({ mod: "folders", kind: "popup", width: 236, height: 340, props: { spaceMenu: w.id, machine: w.machine ?? null, git: g ? (g.linked ? "linked" : "main") : null, folder } });
+    openOverlay({ mod: "folders", kind: "popup", width: 236, height: 300, props: { spaceMenu: w.id, machine: w.machine ?? null, git: g ? (g.linked ? "linked" : "main") : null, folder } });
   }
 
   // ---- folders ----
@@ -721,6 +727,75 @@ export default class Spaces extends View {
     if (was.near && sp.some((s) => s.id === was.near)) run("space.select", { id: was.near });
   }
 
+  // The dialog editing a space: its name, and the folder it is pinned to, empty
+  //  to follow its terminals; the folder field's hints and picker are the folder dialog's.
+  editSpace(id, machine, overlay, cx) {
+    const space = spaces().find((x) => x.id === id);
+    this.editing = { space: id, machine, overlay };
+    this.fields = ["name", "path"];
+    this.name = InputState.new({ value: space?.name ?? "" });
+
+    const pinned = space ? folders(machine).pins?.[localId(space)] ?? "" : "";
+    const live = space ? place({ ...space, machine }, panes()) : "";
+    this.path = InputState.new({ value: pinned, placeholder: live ? `Following its terminals: ${live}` : "Following its terminals" });
+
+    this.mirror = false;
+    this.nameMirror = false;
+    this.focused = "path";
+    this.hints = [];
+    this.hintFor = null;
+    this.hintAt = 0;
+    this.hintSeq = 0;
+    this.problem = null;
+
+    for (const field of this.fields) {
+      this[field].on("focus", (_e, cx) => { this.focused = field; cx.notify(); });
+      this[field].on("change", (_e, cx) => { this.problem = null; if (this.focused === field && field !== "name") this.suggest(field, cx); });
+      this[field].on("submit", (_e, cx) => this.saveSpace(cx));
+    }
+
+    this.path.focus();
+    cx.timer.after(300, () => this.path.focus());
+  }
+
+  // A name left as shown renames nothing, so a space nobody named keeps following its folder.
+  saveSpace(cx) {
+    const { space: id, machine, overlay } = this.editing;
+    const space = spaces().find((x) => x.id === id);
+    if (!space) return closeOverlay(overlay);
+
+    const name = this.name.value().trim(), folder = this.path.value().trim();
+    const save = (full) => {
+      if (name && name !== space.name) run("space.rename", { id, name });
+      pin(space, full);
+      closeOverlay(overlay);
+    };
+    if (!folder) return save(null);
+
+    cx.spawn(async (cx) => {
+      const full = await expand(machine, folder).catch(() => null);
+      if (await isFolder(machine, full)) return save(full.replace(/(.)\/+$/, "$1"));
+      this.problem = `${folder} is not a folder${machine ? ` on ${machine}` : ""}.`;
+      cx.notify();
+    });
+  }
+
+  spaceEditView(t) {
+    const { machine, overlay } = this.editing;
+    const { button, field } = dialogParts(t);
+    return v_flex().id("space-edit").w_full().p(20).gap(16).bg(t.popover).text_color(t.foreground)
+      .on_key_down((e, cx) => this.editKey(e, cx))
+      .child(div().text_size(15).font_semibold().child("Edit space"))
+      .child(field("Name", this.name, null))
+      .child(field("Folder", this.path, "Its folder, git status and folder rules go by this one. Empty: the folder its first terminal works in.",
+        machine ? null : button("space-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
+      .when(this.hintFor === "path" && this.hints.length > 0, (el) => el.child(this.hintList("path", t)))
+      .when(Boolean(this.problem), (el) => el.child(div().text_size(12).text_color(t.ansi1).child(this.problem)))
+      .child(h_flex().pt(4).gap(8).justify_end()
+        .child(button("space-cancel", "Cancel", false, () => closeOverlay(overlay)))
+        .child(button("space-save", "Save", true, (_e, cx) => this.saveSpace(cx))));
+  }
+
   // A start folder is one folder that is there: `space.new` starts no terminal anywhere else.
   saveFolder(cx) {
     const { id, machine, fresh, overlay } = this.editing;
@@ -794,7 +869,7 @@ export default class Spaces extends View {
     else if ((e.key === "down" || e.key === "up") && shown.length) this.hintAt = (this.hintAt + (e.key === "down" ? 1 : shown.length - 1)) % shown.length;
     else if (e.key === "tab" && !e.modifiers.shift && shown.length) this.takeHint(shown[this.hintAt], cx);
     else if (e.key === "tab") {
-      const next = FIELDS[(FIELDS.indexOf(this.focused) + (e.modifiers.shift ? FIELDS.length - 1 : 1)) % FIELDS.length];
+      const fields = this.fields, next = fields[(fields.indexOf(this.focused) + (e.modifiers.shift ? fields.length - 1 : 1)) % fields.length];
       this.hints = [];
       this.focused = next;
       this[next].focus();
@@ -951,14 +1026,12 @@ export default class Spaces extends View {
     const worktree = (action, size) => () => openOverlay({ mod: "worktree", kind: "dialog", ...size, props: { space: id, action } });
     return v_flex().id("space-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(h_flex().px(8).pt(6).pb(8).gap(6).items_center().children([...Object.keys(MARK), null].map(swatch)))
-      .child(item("space-rename", "Rename", "square-pen", () => run("space.rename", { id })))
+      .child(item("space-edit", "Edit space…", "square-pen", () => openOverlay({ mod: "folders", kind: "dialog", width: 460, props: { editSpace: id, machine } })))
       .when(Boolean(git), (el) => el
         .child(item("space-pull", "Git pull", "git-branch", () => pull(s)))
         .child(item("space-worktree-new", "New worktree", "git-branch", worktree("new", { width: 440, height: 260 })))
         .child(item("space-worktree-open", "Open worktree", "git-branch", worktree("open", { width: 560, height: 480 }))))
       .when(git === "linked", (el) => el.child(item("space-worktree-remove", "Remove worktree", "git-branch", worktree("remove", { width: 440, height: 260 }))))
-      .when(!machine, (el) => el.child(item("space-pin", "Set folder…", "pin", () => sidebarJob({ do: "pin", id }))))
-      .when(Boolean(f.pins?.[colorId]), (el) => el.child(item("space-unpin", "Follow terminals", "pin-off", () => pin(s, null))))
       .child(item("space-archive", "Archive", "archive", () => sidebarJob({ do: "archive", id, folder })))
       .child(item("space-close", "Close", "x", () => run("space.close", { id }), t.ansi1));
   }
@@ -977,16 +1050,7 @@ export default class Spaces extends View {
 
   editView(t) {
     const { machine, overlay } = this.editing;
-    const button = (key, label, primary, action) => h_flex().id(key).h(32).px(14).flex_none().items_center().rounded(8).border_1()
-      .border_color(primary ? t.solid : t.input).bg(primary ? t.solid : t.raised).text_color(primary ? t.solid_foreground : t.foreground)
-      .text_size(12.5).font_medium().cursor_pointer().hover((s) => s.opacity(0.88)).on_click(action).child(label);
-    const field = (label, input, hint, extra = null) => v_flex().gap(6)
-      .child(div().text_size(12).font_medium().text_color(t.muted).child(label))
-      .child(h_flex().gap(8)
-        .child(div().flex_1().min_w(0).h(34).px(10).flex().items_center().rounded(8).border_1().border_color(t.input).bg(t.background)
-          .child(Input.new(input).w_full().text_size(13).text_color(t.foreground)))
-        .when(Boolean(extra), (el) => el.child(extra)))
-      .when(Boolean(hint), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(hint)));
+    const { button, field } = dialogParts(t);
     return v_flex().id("folder-edit").w_full().p(20).gap(16).bg(t.popover).text_color(t.foreground)
       .on_key_down((e, cx) => this.editKey(e, cx))
       .child(div().text_size(15).font_semibold().child("Edit folder"))
@@ -1281,6 +1345,7 @@ export default class Spaces extends View {
     if (this.folderMenu) return this.folderMenuView(t);
     if (this.archivedMenu) return this.archivedMenuView(t);
     if (this.spaceMenu) return this.spaceMenuView(t);
+    if (this.editing?.space) return this.spaceEditView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
