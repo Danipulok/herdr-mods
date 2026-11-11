@@ -398,7 +398,7 @@ export default class Spaces extends View {
         if (c === "next" || c === "prev") this.step(c === "next" ? 1 : -1);
         // "folders.archive": the space in front.
         const front = c === "archive" && spaces().find((w) => w.active);
-        if (front) archive(front, this.seen.find((e) => e.id === front.id)?.folder ?? null);
+        if (front) this.archive(front, this.seen.find((e) => e.id === front.id)?.folder ?? null, cx);
         if (c === "job") this.job(cx);
         cx.notify();
       }
@@ -412,7 +412,7 @@ export default class Spaces extends View {
     setShared(JOB, null);
     if (job?.do === "archive") {
       const space = spaces().find((x) => x.id === job.id);
-      if (space) archive(space, job.folder);
+      if (space) this.archive(space, job.folder, cx);
     }
 
     if (job?.do === "restore") {
@@ -423,16 +423,24 @@ export default class Spaces extends View {
     if (job?.do === "new") newSpaceIn(job.machine, job.id);
   }
 
-  // A space taken back folds the archive it was in.
+  // A space archived or taken back folds the archive it goes to or came from.
+  archive(s, folder, cx) {
+    archive(s, folder);
+    this.foldArchive(s.machine ?? null, folder, cx);
+  }
+
   restore(machine, entry, cx) {
     cx.spawn(async (cx) => {
-      if (!await restore(machine, entry)) return;
-      const shown = folders(machine).list.some((x) => x.id === entry.folder) ? entry.folder : null;
-      if (!this.openArchives.delete(`${machine ?? ""}/${shown ?? ""}`)) return;
-
-      localStorage.setItem("archive.open", JSON.stringify([...this.openArchives]));
-      cx.notify();
+      if (await restore(machine, entry)) this.foldArchive(machine, entry.folder, cx);
     });
+  }
+
+  foldArchive(machine, folder, cx) {
+    const shown = folders(machine).list.some((x) => x.id === folder) ? folder : null;
+    if (!this.openArchives.delete(`${machine ?? ""}/${shown ?? ""}`)) return;
+
+    localStorage.setItem("archive.open", JSON.stringify([...this.openArchives]));
+    cx.notify();
   }
 
   // One space down (1) or up (-1) from the one in front, past the spaces in
@@ -1293,7 +1301,7 @@ export default class Spaces extends View {
             .text_size(11).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
             .role("button").accessibility_label("Expand worktrees")
             .on_mouse_down("left", stop).on_click(toggle).child(String(kids))))
-          .when(this.hovered === w.id, el => el.child(this.tool(`space-archive-${w.id}`, "Archive space", "mods/workspace-chrome/archive.svg", t, () => archive(w, folder)))),
+          .when(this.hovered === w.id, el => el.child(this.tool(`space-archive-${w.id}`, "Archive space", "mods/workspace-chrome/archive.svg", t, (cx) => this.archive(w, folder, cx)))),
       );
   }
 

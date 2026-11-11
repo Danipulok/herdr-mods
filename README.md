@@ -66,7 +66,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 <summary><b>Archive</b>: put a space away with its tabs, restore it later</summary>
 
 - Archive a space from its right-click menu, the hover button, or `ctrl-shift-w` / `cmd-shift-w`. Each tab's name, directory and Claude Code session are recorded, then the space closes.
-- A folder ends with an `Archive N` row. Open, it lists the archived spaces newest first with their age (`5h`, `3d`); see the Spaces screenshot.
+- A folder ends with an `Archive N` row. Open, it lists the archived spaces newest first with their age (`5h`, `3d`); see the Spaces screenshot. Archiving or restoring a space folds it.
 - Hover an archived row for its restore button; right-click it for Restore and Delete.
 - Restore checks each directory still exists, opens the space and its tabs, and runs `claude --resume <session>` where a session was recorded. Sessions come from ccgram, see [Requirements](#requirements).
 
