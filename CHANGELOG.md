@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/Danipulok/herdr-mods/compare/v1.2.0...v1.2.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* **folders:** fold the archive a space is archived into, as restoring does ([cf6c30b](https://github.com/Danipulok/herdr-mods/commit/cf6c30b550bd2ca7732458731f51e79661ffbe64))
+* **folders:** make a space from a folder menu's `New space here` through the sidebar ([53ed38e](https://github.com/Danipulok/herdr-mods/commit/53ed38e3eff5052bfc8c678bff9c681a873b0444))
+
 ## [1.2.0](https://github.com/Danipulok/herdr-mods/compare/v1.1.0...v1.2.0) (2026-11-10)
 
 
