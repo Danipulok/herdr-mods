@@ -406,7 +406,7 @@ export default class Spaces extends View {
   }
 
   // A menu's action runs here: Herdr cancels a closed popup's unfinished tasks,
-  //  which stopped archive and restore at their first `exec` (its `AGENTS.md`, "Cleanup").
+  //  which stopped archive, restore and a new space at their first `exec` (its `AGENTS.md`, "Cleanup").
   job(cx) {
     const job = shared(JOB);
     setShared(JOB, null);
@@ -419,6 +419,8 @@ export default class Spaces extends View {
       const entry = (folders(job.machine).archive ?? []).find((x) => x.id === job.id);
       if (entry) this.restore(job.machine, entry, cx);
     }
+
+    if (job?.do === "new") newSpaceIn(job.machine, job.id);
   }
 
   // A space taken back folds the archive it was in.
@@ -1006,7 +1008,7 @@ export default class Spaces extends View {
       .hover((s) => s.border_color(t.muted)).on_click(() => { this.paint(machine, id, color); closeOverlay(overlay); });
     return v_flex().id("folder-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(h_flex().px(8).pt(6).pb(8).gap(6).items_center().children([null, ...Object.keys(MARK)].map(swatch)))
-      .child(item("folder-space", "New space here", () => newSpaceIn(machine, id)))
+      .child(item("folder-space", "New space here", () => sidebarJob({ do: "new", machine, id })))
       .child(item("folder-edit", "Edit folder…", () => openOverlay({ mod: "folders", kind: "dialog", width: 460, props: { edit: id, machine } })))
       .child(item("folder-delete", "Delete folder", () => {
         // Its archived spaces stay, in no folder.
