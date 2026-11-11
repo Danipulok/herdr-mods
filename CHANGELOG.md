@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/Danipulok/herdr-mods/compare/v1.1.0...v1.2.0) (2026-11-10)
+
+
+### Features
+
+* **agent-list:** put done agents with a running shell, monitor or workflow straight into `Background` ([581bf70](https://github.com/Danipulok/herdr-mods/commit/581bf70f729199f31a1bef5faa6d0ed23a13778c))
+
 ## [1.1.0](https://github.com/Danipulok/herdr-mods/compare/v1.0.0...v1.1.0) (2026-11-10)
 
 
