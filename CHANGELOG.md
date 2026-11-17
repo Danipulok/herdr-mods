@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/Danipulok/herdr-mods/compare/v1.2.1...v1.3.0) (2026-11-17)
+
+
+### Features
+
+* **agent-list:** ring a finished agent only once it stayed done for 3 s with nothing running behind it ([7112eb9](https://github.com/Danipulok/herdr-mods/commit/7112eb92d630cffacc9321e78d09397bfed95ec9))
+
 ## [1.2.1](https://github.com/Danipulok/herdr-mods/compare/v1.2.0...v1.2.1) (2026-11-11)
 
 
