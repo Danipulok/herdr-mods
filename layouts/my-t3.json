@@ -6,6 +6,7 @@
   },
   "type": "row",
   "preview": "layouts/herdr-t3.svg",
+  "toast": "toast-filter",
   "divider": { "width": 1, "color": "border" },
   "children": [
     {

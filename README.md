@@ -1,6 +1,6 @@
 # herdr-mods
 
-Two mods and a layout for the [Herdr](https://herdr.dev) desktop app (`herdr-app`): a spaces list with folders, and an agents list that shows what a Claude Code agent still runs in the background.
+Three mods and a layout for the [Herdr](https://herdr.dev) desktop app (`herdr-app`): a spaces list with folders, and an agents list that shows what a Claude Code agent still runs in the background and holds its finish alert until it really finished.
 
 Listed in the [Herdr gallery](https://herdr.dev/gallery/) under Community.
 
@@ -15,9 +15,11 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 ## What is in it
 
 - `mods/folders` replaces the spaces list with folders.
-- `mods/agent-list` replaces the agents list with one sorted by what needs you.
-- `layouts/my-t3.json` is the `herdr-t3` layout with its spaces block pointed at `folders` and its agents block at `agent-list`.
+- `mods/agent-list` replaces the agents list with one sorted by what needs you, and rings a finished agent only once it stayed done.
+- `mods/toast-filter` is Herdr's toast mod, holding back Herdr's own finish toast for `agent-list`.
+- `layouts/my-t3.json` is the `herdr-t3` layout with its spaces block pointed at `folders` and its agents block at `agent-list`, and its notifications drawn by `toast-filter`.
 - `keys.json` holds the keys of the `layout:my-t3` section.
+- `settings.json` points Herdr's done sound at a silent file, since `agent-list` plays it.
 
 [`RECIPE.md`](RECIPE.md) describes the same features in the form an agent rebuilds them from: sizes, colors and the commands each mod runs.
 
@@ -88,6 +90,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - A done agent you look at stays in Done until you leave it.
 - Hover a row to pin it. Pinned agents go into a Pinned group on top, the same pins herdr-t3's inbox uses.
 - Click a row to focus the agent.
+- A finish alert (toast and sound) waits 3 seconds and is dropped if by then the agent works again, you looked at it, or its footer shows a shell, a monitor or a workflow still running: Claude Code often finishes a turn and starts the next at once. Needs the Herdr version under Requirements.
 
 </details>
 
@@ -109,7 +112,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 
 ## Requirements
 
-- The Herdr desktop app with its `herdr-app` CLI. Tested with `herdr-app 0.1.14`.
+- The Herdr desktop app with its `herdr-app` CLI. Tested with `herdr-app 0.1.14`; held finish alerts need `herdr-app 0.1.16`, whose layouts name their toast mod; on older versions alerts stay immediate.
 - The `t3-*` mods of [herdr-t3](https://github.com/JinJieBeWater/herdr-t3), installed as its README says: the layout uses its `t3-chrome`, `t3-tabs` and `t3-inbox` mods.
 - [`just`](https://github.com/casey/just) and [`jq`](https://jqlang.org).
 
@@ -124,7 +127,7 @@ just deploy
 herdr-app do layout.switch --name my-t3
 ```
 
-`just deploy` loads each mod once with `herdr-app check`, copies the mods and the layout into `~/.config/herdr-app` (or `$XDG_CONFIG_HOME/herdr-app`) and merges `keys.json` into the app's `keys.json`. A running app picks up a deployed mod at once, with no restart. Run `just deploy` again after a `git pull` to update.
+`just deploy` loads each mod once with `herdr-app check`, copies the mods and the layout into `~/.config/herdr-app` (or `$XDG_CONFIG_HOME/herdr-app`) and merges `keys.json` into the app's `keys.json` and, on the Herdr version held finish alerts need and unless you set your own done sound, `settings.json` into the app's `settings.json`. A running app picks up a deployed mod at once, with no restart. Run `just deploy` again after a `git pull` to update.
 
 ## Undo
 
@@ -134,11 +137,13 @@ herdr-app do layout.switch --name my-t3
    ```
 2. Delete what `just deploy` copied:
    ```sh
-   rm -r ~/.config/herdr-app/mods/folders ~/.config/herdr-app/mods/agent-list ~/.config/herdr-app/layouts/my-t3.json
+   rm -r ~/.config/herdr-app/mods/folders ~/.config/herdr-app/mods/agent-list ~/.config/herdr-app/mods/toast-filter ~/.config/herdr-app/layouts/my-t3.json
    ```
 3. Drop the layout's keys:
    ```sh
-   jq 'del(.["layout:my-t3"])' ~/.config/herdr-app/keys.json > keys.tmp && mv keys.tmp ~/.config/herdr-app/keys.json
+. Give Herdr its done sound back:
+   ```sh
+   jq 'del(.sounds.done)' ~/.config/herdr-app/settings.json > settings.tmp && mv settings.tmp ~/.config/herdr-app/settings.json
    ```
 
 Your folders stay in `~/.config/herdr-space-folders.json`. Delete that file too if no other mod uses it.
@@ -152,6 +157,7 @@ Your folders stay in `~/.config/herdr-space-folders.json`. Delete that file too 
 | `mods/agent-list` base | [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3) `mods/t3-agents` | `8b8506341a3aa285041f32e757bd48ef67c916bb` |
 | `layouts/my-t3.json` | [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3) `layouts/herdr-t3.json` | `8b8506341a3aa285041f32e757bd48ef67c916bb` |
 | Both of the above | [herdrdev/herdr-app](https://github.com/herdrdev/herdr-app) `defaults/mods/spaces` and `defaults/layouts/main.json` | tag `v0.1.10` |
+| `mods/toast-filter` and `mods/agent-list/done.mp3` | [herdrdev/herdr-app](https://github.com/herdrdev/herdr-app) `defaults/mods/toast` and `assets/sounds/done.mp3` | tag `v0.1.16` (`034f8b85f7e6bb71f8ff55cb4a80c548b2578c0f`) |
 
 Herdr's code and `herdr-t3` are under the Apache License 2.0 (`licenses/Apache-2.0`). The folders code of `herdr-space-folders` is MIT (`licenses/space-folders-MIT`).
 

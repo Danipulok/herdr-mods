@@ -31,6 +31,7 @@ The window is herdr-t3's, as its [recipe](https://github.com/JinJieBeWater/herdr
 
 - **Agent statuses**: working is a spinner in `working`, blocked a 14px `!` badge on `blocked` at 15%, done a 7px `done` dot, idle a 1.5px ring. A parent reads with its live sub-agents: blocked if any of them is, then its own done, then working if any is. Folded parents still show a blocked sub-agent under them. A done agent you look at stays in Done until you leave it.
 - **Background work**: every 5s the list reads each agent's screen (`hc read`) and takes the lines under the last `─` rule. For an idle or done agent the counts there (`1 shell`, `2 monitors`) show in its row. For any agent, each line like `◯ name ░░▓▓ 2/5` shows as the workflow name and `2/5`.
+- **Finish alerts**: Herdr posts `<agent> finished` and plays its done sound the moment an agent stops working unseen. `toast-filter` closes that toast at once and appends it to the shared state `agents.finishes` (entries younger than 60s are kept). Every 1s `agent-list` picks up new entries; 3s after each finish it posts the same notification again with `held: true` and plays `mods/agent-list/done.mp3` (when `sounds.enabled`), unless the agent is no longer `done`, a later finish of the same agent arrived, or its footer counts a shell, monitor or workflow. Herdr's own done sound is `mods/agent-list/silent.mp3`, set in `settings.json`.
 - **Agent rows**: click runs `agent.focus`. Hover swaps the time for a pin button. Pinned agents go into a `Pinned` group on top. Pins are the shared state `agents.pins`, the same list herdr-t3's inbox uses. A parent's fold arrow folds its sub-agents and shows their count.
 - **Folders**:
   - Click a head to fold it. Drag a head to reorder folders.
@@ -47,9 +48,10 @@ The window is herdr-t3's, as its [recipe](https://github.com/JinJieBeWater/herdr
 
 ## Built from
 
-- `layouts/my-t3.json`: herdr-t3's `layouts/herdr-t3.json` at `8b85063` with two blocks changed: `spaces` holds `{ "mod": "folders" }` and `agents` holds `{ "mod": "agent-list" }`. Node ids stay the same.
+- `layouts/my-t3.json`: herdr-t3's `layouts/herdr-t3.json` at `8b85063` with two blocks changed: `spaces` holds `{ "mod": "folders" }` and `agents` holds `{ "mod": "agent-list" }`, and the root names `"toast": "toast-filter"`. Node ids stay the same.
 - `mods/folders`: a clone of Herdr's shipped `spaces` mod (`0.1.10`) with folders from [herdr-space-folders](https://github.com/jankeesvw/herdr-space-folders) and herdr-t3's `t3-spaces` changes. Own icons `trash.svg` and `archive-restore.svg`. Commands it runs: `space.new`, `space.select`, `space.move`, `space.rename`, `space.close`, `tab.new`, `agent.focus`, `layout.select`. Shared state `space-folders` and `folders.job`. Worktree dialogs come from the shipped `worktree` mod.
-- `mods/agent-list`: a clone of Herdr's shipped `agents` mod (`0.1.10`) through herdr-t3's `t3-agents`, with `name.js` and `tree.js` copied from it. Commands: `agent.focus`, `terminal.peek`. Shared state `agents.sort`, `agents.pins`.
+- `mods/agent-list`: a clone of Herdr's shipped `agents` mod (`0.1.10`) through herdr-t3's `t3-agents`, with `name.js` and `tree.js` copied from it. Commands: `agent.focus`, `terminal.peek`. Shared state `agents.sort`, `agents.pins`, `agents.finishes`. `done.mp3` is Herdr's `assets/sounds/done.mp3` at `v0.1.16`, `silent.mp3` 0.1s of silence.
+- `mods/toast-filter`: Herdr's shipped `toast` mod at `v0.1.16`, plus closing and handing over Herdr's own finish toast (`level: "info"`, action `agent.focus`, title ending ` finished`, no `held`). Shared state `agents.finishes`.
 - Shipped mods used: `worktree`, `picker`, `menu`, and icons from `mods/workspace-chrome/`.
 - Files: folders live in `~/.config/herdr-space-folders.json` (`list`, `of`, `archive`, `colors`, `pins`, `at`), the file herdr-space-folders uses.
 
@@ -60,12 +62,14 @@ The window is herdr-t3's, as its [recipe](https://github.com/JinJieBeWater/herdr
 - Files read outside the mods: `~/.config/herdr-space-folders.json`, ccgram's `~/.ccgram/session_map.json` and the transcripts it names (for Restore), and `${XDG_STATE_HOME:-~/.local/state}/claude-hc-resume/` (for Edit space). Without ccgram, Restore opens a plain terminal in the same folder.
 - The folders file is written through a `.tmp` file and `mv`. A newer file on disk wins, so another writer of it (herdr-space-folders) does not lose its changes. It is re-read every 15s and on change.
 - The background counts and workflows are parsed from Claude Code's footer text. A Claude Code release that changes that footer leaves them empty.
+- A layout names its toast mod only from Herdr `0.1.16`; `just deploy` merges `settings.json` only from that version, and not over a done sound of your own, since a silent done sound without `toast-filter` would mute every finish.
 - The core turns a stand-in agent's `done` into `idle` within seconds, so a fake agent tests Done poorly. Use a real agent.
 
 ## Done when
 
-- `herdr-app check` passes for `mods/folders` and `mods/agent-list`, and `layout.switch {"name": "my-t3"}` shows the window above.
+- `herdr-app check` passes for `mods/folders`, `mods/agent-list` and `mods/toast-filter`, and `layout.switch {"name": "my-t3"}` shows the window above.
 - New folder, then Edit folder with a start folder: `+` on its head opens a space there, and an existing space working under a matching rule moves into it.
 - `alt-down` and `alt-up` walk the spaces in list order and skip a folded folder.
 - `ctrl-shift-w` archives the front space, and its `Archive 1` row restores it with the same tabs.
 - An agent asking a question shows under `Needs you` with the `!` badge. A Claude Code agent with a background shell shows `1 shell` once idle.
+- A Claude Code agent that finishes unseen and stays done rings 3s later with one toast and one sound; one that starts its next turn within 3s, or finishes with `sleep 30 &` running, rings nothing.

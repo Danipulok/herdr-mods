@@ -4,6 +4,8 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, focused, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, layout, hc } from "herdr";
+import { FinishAlerts } from "./finish.js";
+import { background, bottom, workflows } from "./footer.js";
 import { namer } from "./name.js";
 import { kidStatus, ownStatus, subAgents, treeStatus } from "./tree.js";
 const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };
@@ -32,31 +34,14 @@ function duration(ms) {
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
 
-// Claude Code's lines under its last rule: the footer, as in `⏵⏵ auto mode on · 1 shell · ↓ to manage`,
-//  then one line per running workflow, as in `◯ harness-review-round  ░░░░  0/8 · 8m29s · ↓ 1.4m tokens`.
-function bottom(screen) {
-  const lines = screen.trimEnd().split("\n").map((line) => line.trim());
-  let rule = lines.length - 1;
-  while (rule >= 0 && !/^─+$/.test(lines[rule])) rule -= 1;
-  return lines.slice(rule + 1).filter(Boolean);
-}
-
-// What still runs behind an agent that reads as idle: the footer counts it.
-function background(lines) {
-  return lines.flatMap((line) => line.split(/ · |, /)).map((part) => part.trim()).filter((part) => /^\d+ [a-z][a-z ]*$/.test(part)).join(", ");
-}
-
-// Each running workflow's name and the steps done, `["harness-review-round", "0/8"]`.
-function workflows(lines) {
-  return lines.map((line) => /^\S\s+(\S+)\s+[░▒▓█]+\s+(\d+\/\d+)/.exec(line)).filter(Boolean).map(([, name, done]) => [name, done]);
-}
-
 export default class Agents extends View {
   init(_props, cx) {
     if (props()?.sortMenu) return;
     this.background = {};
     this.workflows = {};
     cx.timer.every(5000, (cx) => this.readBackground(cx));
+    const finishes = new FinishAlerts();
+    cx.timer.every(1000, (cx) => finishes.watch(cx));
     this.folded = JSON.parse(localStorage.getItem("folded") ?? "{}");
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
