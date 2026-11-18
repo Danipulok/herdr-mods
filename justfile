@@ -9,10 +9,11 @@ default:
     @just --list
 
 [group("check")]
-[doc("Load every mod once in a hidden window, and check the file two mods share is the same in both")]
+[doc("Load every mod once in a hidden window, and check the file the mods share is the same in each")]
 lint:
     for mod in mods/*/; do herdr-app check "$mod"; done
     cmp mods/toast-filter/handoff.js mods/agent-list/handoff.js
+    cmp mods/toast-filter/handoff.js mods/folders/handoff.js
 
 [group("deploy")]
 [doc("Copy the mods and the layout into the herdr-app home, merge the layout's keys and, on a Herdr that holds finish alerts, the sound settings")]

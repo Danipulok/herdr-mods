@@ -8,6 +8,7 @@ import { FinishAlerts } from "./finish.js";
 import { background, bottom, workflows } from "./footer.js";
 import { namer } from "./name.js";
 import { kidStatus, ownStatus, subAgents, treeStatus } from "./tree.js";
+import { recordFailures } from "./handoff.js";
 const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };
 const SORTS = [
   { id: "priority", label: "Priority", icon: "clock" },
@@ -229,6 +230,10 @@ export default class Agents extends View {
   }
 
   render(cx) {
+    return recordFailures("agent-list", () => this.draw(cx));
+  }
+
+  draw(cx) {
     const t = theme();
     if (props()?.sortMenu) return this.sortMenu(t);
     const sort = sortOf();

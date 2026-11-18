@@ -14,6 +14,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, agents, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand, notify } from "herdr";
+import { recordFailures } from "./handoff.js";
 
 // A machine's folders live in a file in its home, so every screen showing its
 // spaces shows the same folders: { list: [{ id, name, folded }], of: { spaceId:
@@ -1429,6 +1430,10 @@ export default class Spaces extends View {
   }
 
   render() {
+    return recordFailures("folders", () => this.draw());
+  }
+
+  draw() {
     const t = theme();
     if (this.folderMenu) return this.folderMenuView(t);
     if (this.archivedMenu) return this.archivedMenuView(t);

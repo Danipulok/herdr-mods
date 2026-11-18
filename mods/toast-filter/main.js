@@ -4,7 +4,7 @@
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { props, closeOverlay, run, theme, shared, setShared } from "herdr";
-import { FINISHES, record } from "./handoff.js";
+import { FINISHES, record, recordFailures } from "./handoff.js";
 
 const DOT = { error: "blocked", warning: "working", success: "done", info: "accent" };
 const KEPT_MS = 60000;
@@ -25,6 +25,10 @@ export default class Toast extends View {
   }
 
   render(cx) {
+    return recordFailures("toast-filter", () => this.draw(cx));
+  }
+
+  draw(cx) {
     const t = theme();
     const p = props() ?? {};
     if (fromHerdrFinish(p)) return div();
