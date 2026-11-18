@@ -128,9 +128,9 @@ async function restore(machine, entry, mode) {
     }
   }
 
-  saveFolders(machine, (f) => ({ ...f, archive: (f.archive ?? []).filter((e) => e.id !== entry.id) }));
-
-  setShared("space-folders.new", { machine, id: entry.folder, before: spaces().map((s) => s.id), until: Date.now() + 60000 });
+  // `run` names no result, so the entry leaves the archive only once its space shows up (see adopt):
+  //  a `space.new` that fails (`cannot start a terminal`) keeps it.
+  setShared("space-folders.new", { machine, id: entry.folder, before: spaces().map((s) => s.id), until: Date.now() + 60000, restored: entry.id });
   const argv = (c) => (fresh(c) ? ["claude"] : ["claude", "--resume", c.session]);
   const start = (c) => ({ ...(startIn(c) ? { folder: startIn(c) } : {}), ...(c.session ? { argv: argv(c) } : {}) });
   const [first, ...rest] = entry.tabs;
@@ -706,6 +706,9 @@ export default class Spaces extends View {
     const before = new Set(want.before), fresh = sp.find((s) => !before.has(s.id) && on(s));
     if (fresh || now > want.until) setShared("space-folders.new", null);
     if (!fresh) return null;
+
+    if (want.restored) forget(want.machine, want.restored);
+
     const f = folders(want.machine);
     if (f.list.some((x) => x.id === want.id)) saveFolders(want.machine, (data) => ({ ...data, of: { ...data.of, [localId(fresh)]: want.id } }));
     return fresh.id;
