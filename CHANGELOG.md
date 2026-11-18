@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/Danipulok/herdr-mods/compare/v1.3.0...v1.4.0) (2026-11-18)
+
+
+### Features
+
+* **folders:** make a space in the front space's folder on `ctrl-shift-s` ([8746c7d](https://github.com/Danipulok/herdr-mods/commit/8746c7d8bbb68b387893f28d64ba634afd4586d8))
+
 ## [1.3.0](https://github.com/Danipulok/herdr-mods/compare/v1.2.1...v1.3.0) (2026-11-17)
 
 
