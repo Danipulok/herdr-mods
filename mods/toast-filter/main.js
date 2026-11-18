@@ -8,6 +8,8 @@ import { FINISHES, record, recordFailures } from "./handoff.js";
 
 const DOT = { error: "blocked", warning: "working", success: "done", info: "accent" };
 const KEPT_MS = 60000;
+// Two body lines under the title fill Herdr's toast, fixed at 72 px high; the tooltip holds the rest.
+const BODY_MAX_H = 32;
 
 const fromHerdrFinish = (note) => !note.held && note.level === "info" && note.action?.name === "agent.focus" && / finished$/.test(note.title ?? "");
 
@@ -54,7 +56,7 @@ export default class Toast extends View {
           .flex_1()
           .overflow_hidden()
           .child(div().truncate().font_semibold().text_size(13).text_color(t.foreground).child(login ? `${login[1]} needs a login: run` : p.title ?? ""))
-          .when(!login && Boolean(p.body), (el) => el.child(div().truncate().text_size(12).text_color(t.muted).child(p.body ?? "")))
+          .when(!login && Boolean(p.body), (el) => el.child(div().max_h(BODY_MAX_H).overflow_hidden().tooltip(p.body).text_size(12).text_color(t.muted).child(p.body ?? "")))
           .when(Boolean(login), (el) => el.child(h_flex().gap(8).items_center()
             .child(div().flex_1().min_w(0).truncate().tooltip(command).text_size(12).text_color(t.muted).child(command))
             .child(div().id("toast-login-copy").flex_none().px(6).py(3).rounded(4).bg(t.raised)
