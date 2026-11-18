@@ -59,10 +59,16 @@ async function newSpaceIn(machine, id) {
 }
 
 // Archived spaces stay in their folder's file: { id, name, label, folder, at, tabs:
-// [{ name, cwd, terminal, session }] }. Herdr knows no agent's session, so it comes from
-// ccgram's map, and is resumed in the folder its transcript started in: Claude
-// looks a session up by that folder only.
+// [{ name, cwd, live, terminal, session }] }. Herdr knows no agent's session, so it comes from
+// ccgram's map, and is resumed in the folder its transcript started in (`cwd`): Claude
+// looks a session up by that folder only. A new chat starts where the tab was (`live`).
 const SESSIONS = "~/.ccgram/session_map.json";
+
+// How a restore starts a tab that had a Claude Code session: its folder's own `restore`, else this, for every folder.
+const RESTORE = "folders.restore";
+const restoreMode = (machine, folder) => folders(machine).list.find((f) => f.id === folder)?.restore ?? shared(RESTORE) ?? "resume";
+const otherMode = (mode) => (mode === "new" ? "resume" : "new");
+const RESTORE_LABEL = { resume: "Restore, resume the chat", new: "Restore with a new chat" };
 
 async function sessionsOn(machine) {
   const r = await exec("sh", ["-c", `cat ${SESSIONS} 2>/dev/null`], { on: machine }).catch(() => null);
@@ -84,7 +90,7 @@ async function archive(s, folder) {
     const session = known?.provider_name === "claude" ? known.session_id : null;
     const live = ps.find((p) => p.tab === c.id && p.cwd)?.cwd ?? s.folder;
     const cwd = (session && await startedIn(machine, known.transcript_path)) || live;
-    tabs.push({ name: c.named ? c.name : null, cwd, terminal, session });
+    tabs.push({ name: c.named ? c.name : null, cwd, live, terminal, session });
   }
 
   const entry = { id: `a${Date.now().toString(36)}`, name: s.named ? s.name : null, label: s.name, folder, at: Date.now(), tabs };
@@ -108,13 +114,15 @@ async function pull(s) {
   notify({ title: r.code === 0 ? `Pulled ${s.name}` : `Can't pull ${s.name}`, body: said, level: r.code === 0 ? "success" : "error" });
 }
 
-// Back in its folder, each tab in its folder and its agent resumed. A folder
-// that's gone (a removed worktree) stops it, and the entry stays.
-async function restore(machine, entry) {
+// Back in its folder, each tab in its folder and its agent resumed, or started
+// anew (`mode` "new"). A folder that's gone (a removed worktree) stops it, and the entry stays.
+async function restore(machine, entry, mode) {
+  const fresh = (c) => mode === "new" && Boolean(c.session);
+  const startIn = (c) => (fresh(c) ? c.live ?? c.cwd : c.cwd);
   for (const c of entry.tabs) {
-    const r = c.cwd ? await exec("test", ["-d", c.cwd], { on: machine }).catch(() => null) : { code: 0 };
+    const r = startIn(c) ? await exec("test", ["-d", startIn(c)], { on: machine }).catch(() => null) : { code: 0 };
     if (r?.code !== 0) {
-      notify({ title: `Can't restore ${entry.label}`, body: `${c.cwd} is gone.`, level: "error" });
+      notify({ title: `Can't restore ${entry.label}`, body: `${startIn(c)} is gone.`, level: "error" });
       return false;
     }
   }
@@ -122,7 +130,8 @@ async function restore(machine, entry) {
   saveFolders(machine, (f) => ({ ...f, archive: (f.archive ?? []).filter((e) => e.id !== entry.id) }));
 
   setShared("space-folders.new", { machine, id: entry.folder, before: spaces().map((s) => s.id), until: Date.now() + 60000 });
-  const start = (c) => ({ ...(c.cwd ? { folder: c.cwd } : {}), ...(c.session ? { argv: ["claude", "--resume", c.session] } : {}) });
+  const argv = (c) => (fresh(c) ? ["claude"] : ["claude", "--resume", c.session]);
+  const start = (c) => ({ ...(startIn(c) ? { folder: startIn(c) } : {}), ...(c.session ? { argv: argv(c) } : {}) });
   const [first, ...rest] = entry.tabs;
   run("space.new", { ...(machine ? { machine } : {}), ...(entry.name ? { name: entry.name } : {}), ...(first.name ? { tab: first.name } : {}), ...start(first) });
   // Herdr names no id back, and the new space is the one in front.
@@ -314,9 +323,10 @@ function dialogParts(t) {
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, archivedMenu, spaceMenu, editSpace, git = null, folder = null, edit, machine = null, fresh = false, overlay } = props() ?? {};
+    const { folderMenu, archivedMenu, archiveMenu, spaceMenu, editSpace, git = null, folder = null, edit, machine = null, fresh = false, overlay } = props() ?? {};
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (archivedMenu) { this.archivedMenu = { id: archivedMenu, machine, overlay }; return; }
+    if (archiveMenu) { this.archiveMenu = { folder, machine, overlay }; return; }
     if (spaceMenu) { this.spaceMenu = { id: spaceMenu, machine, git, folder, overlay }; return; }
     if (editSpace) { this.editSpace(editSpace, machine, overlay, cx); return; }
     if (edit) {
@@ -418,7 +428,7 @@ export default class Spaces extends View {
 
     if (job?.do === "restore") {
       const entry = (folders(job.machine).archive ?? []).find((x) => x.id === job.id);
-      if (entry) this.restore(job.machine, entry, cx);
+      if (entry) this.restore(job.machine, entry, job.mode, cx);
     }
 
     if (job?.do === "new") newSpaceIn(job.machine, job.id);
@@ -430,10 +440,23 @@ export default class Spaces extends View {
     this.foldArchive(s.machine ?? null, folder, cx);
   }
 
-  restore(machine, entry, cx) {
+  restore(machine, entry, mode, cx) {
     cx.spawn(async (cx) => {
-      if (await restore(machine, entry)) this.foldArchive(machine, entry.folder, cx);
+      if (await restore(machine, entry, mode)) this.foldArchive(machine, entry.folder, cx);
     });
+  }
+
+  // A folder's own restore mode, or null to go by the one for every folder.
+  setRestore(machine, id, mode) {
+    saveFolders(machine, (f) => ({
+      ...f,
+      list: f.list.map((x) => {
+        if (x.id !== id) return x;
+
+        const { restore: _, ...rest } = x;
+        return mode ? { ...rest, restore: mode } : rest;
+      }),
+    }));
   }
 
   foldArchive(machine, folder, cx) {
@@ -1076,9 +1099,32 @@ export default class Spaces extends View {
       .when(Boolean(tone), (el) => el.text_color(tone))
       .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); if (entry) action(); })
       .child(svg(icon).size(13).flex_none().text_color(tone ?? t.muted)).child(label);
+    const mode = entry ? restoreMode(machine, entry.folder) : "resume";
+    const restoreItem = (key, choice) => item(key, RESTORE_LABEL[choice], "mods/folders/archive-restore.svg", () => sidebarJob({ do: "restore", machine, id, mode: choice }));
     return v_flex().id("archived-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
-      .child(item("archived-restore", "Restore", "mods/folders/archive-restore.svg", () => sidebarJob({ do: "restore", machine, id })))
+      .child(restoreItem("archived-restore", mode))
+      .child(restoreItem("archived-restore-other", otherMode(mode)))
       .child(item("archived-delete", "Delete", "mods/folders/trash.svg", () => forget(machine, id), t.ansi1));
+  }
+
+  // An archive's right-click menu: how its folder restores a Claude Code tab, and how every folder does.
+  archiveMenuView(t) {
+    const { folder, machine, overlay } = this.archiveMenu;
+    const own = folders(machine).list.find((x) => x.id === folder)?.restore ?? null, every = shared(RESTORE) ?? "resume";
+    const names = { resume: "Resume the chat", new: "Start a new chat" };
+    const heading = (label) => div().px(10).pt(6).pb(2).text_size(11.5).text_color(t.dim).child(label);
+    const item = (key, label, chosen, action) => h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
+      .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
+      .child(div().w(13).flex_none().text_color(t.muted).child(chosen ? "✓" : "")).child(label);
+    return v_flex().id("archive-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
+      .when(Boolean(folder), (el) => el
+        .child(heading("Restoring in this folder"))
+        .child(item("archive-folder-every", `As every folder: ${names[every].toLowerCase()}`, own === null, () => this.setRestore(machine, folder, null)))
+        .child(item("archive-folder-resume", names.resume, own === "resume", () => this.setRestore(machine, folder, "resume")))
+        .child(item("archive-folder-new", names.new, own === "new", () => this.setRestore(machine, folder, "new"))))
+      .child(heading("Restoring in every folder"))
+      .child(item("archive-every-resume", names.resume, every === "resume", () => setShared(RESTORE, "resume")))
+      .child(item("archive-every-new", names.new, every === "new", () => setShared(RESTORE, "new")));
   }
 
   editView(t) {
@@ -1317,7 +1363,7 @@ export default class Spaces extends View {
     return h_flex().id(id).size(20).flex_none().items_center().justify_center().rounded(4).text_color(t.dim)
       .role("button").accessibility_label(label).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => { cx.stop_propagation(); action(cx); })
+      .on_click((click, cx) => { cx.stop_propagation(); action(cx, click); })
       .child(svg(icon).size(12));
   }
 
@@ -1333,6 +1379,7 @@ export default class Spaces extends View {
       .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
       .role("button").accessibility_label(open ? "Hide archived spaces" : "Show archived spaces")
       .on_click((_e, cx) => this.toggleArchive(at, cx))
+      .on_mouse_down("right", () => openOverlay({ mod: "folders", kind: "popup", width: 250, height: 230, props: { archiveMenu: true, folder, machine } }))
       .child(h_flex().size(18).flex_none().items_center().justify_center().child(svg("mods/workspace-chrome/archive.svg").size(13)))
       .child(div().flex_1().min_w(0).truncate().child("Archive"))
       .child(div().flex_none().text_size(11.5).child(String(mine.length)))
@@ -1345,12 +1392,20 @@ export default class Spaces extends View {
     return h_flex().id(`archived-${e.id}`).h(30).flex_none().pl(indent).pr(8).gap(8).items_center().rounded(8)
       .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_hover((over, cx) => this.hover(e.id, over, cx))
-      .on_mouse_down("right", (_e, cx) => { this.hovered = null; cx.notify(); openOverlay({ mod: "folders", kind: "popup", width: 210, height: 80, props: { archivedMenu: e.id, machine } }); })
+      .on_mouse_down("right", (_e, cx) => { this.hovered = null; cx.notify(); openOverlay({ mod: "folders", kind: "popup", width: 230, height: 110, props: { archivedMenu: e.id, machine } }); })
       .child(h_flex().size(18).flex_none().rounded(5).bg(t.input).items_center().justify_center().text_size(11).font_bold()
         .child(initial(e.label)))
       .child(div().flex_1().min_w(0).truncate().child(e.label))
-      .child(this.hovered === e.id ? this.tool(`archived-restore-${e.id}`, `Restore ${e.label}`, "mods/folders/archive-restore.svg", t, (cx) => this.restore(machine, e, cx))
+      .child(this.hovered === e.id ? this.restoreTool(machine, e, t)
         : div().flex_none().text_size(11).text_color(t.dim).child(ago(e.at)));
+  }
+
+  // Restores the way the entry's folder says; with Shift, the other way.
+  restoreTool(machine, e, t) {
+    const mode = restoreMode(machine, e.folder), other = otherMode(mode);
+    const label = `${RESTORE_LABEL[mode]} (Shift: ${RESTORE_LABEL[other].toLowerCase()})`;
+    return this.tool(`archived-restore-${e.id}`, label, "mods/folders/archive-restore.svg", t,
+      (cx, click) => this.restore(machine, e, click.modifiers.shift ? other : mode, cx)).tooltip(label);
   }
 
   toggleArchive(at, cx) {
@@ -1377,6 +1432,7 @@ export default class Spaces extends View {
     const t = theme();
     if (this.folderMenu) return this.folderMenuView(t);
     if (this.archivedMenu) return this.archivedMenuView(t);
+    if (this.archiveMenu) return this.archiveMenuView(t);
     if (this.spaceMenu) return this.spaceMenuView(t);
     if (this.editing?.space) return this.spaceEditView(t);
     if (this.editing) return this.editView(t);
