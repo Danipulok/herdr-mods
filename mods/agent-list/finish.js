@@ -6,7 +6,7 @@
 
 import { agents, hc, notify, playSound, settings, shared } from "herdr";
 import { background, bottom, workflows } from "./footer.js";
-import { FINISHES } from "./handoff.js";
+import { FINISHES, record } from "./handoff.js";
 
 const HOLD_MS = 3000;
 const DONE_SOUND = "mods/agent-list/done.mp3";
@@ -22,21 +22,29 @@ export class FinishAlerts {
       this.handled.add(finish.id);
       cx.spawn(async (cx) => {
         await cx.sleep(Math.max(0, finish.at + HOLD_MS - Date.now()));
-        if (await this.stillDone(finish)) this.ring(finish.note);
+        const reason = await this.dropReason(finish);
+        record({ kind: "finish", overlay: finish.id, terminal: finish.note.action.args.terminal, title: finish.note.title, body: finish.note.body, verdict: reason ? "dropped" : "rung", reason });
+        if (!reason) this.ring(finish.note);
       });
     }
   }
 
-  async stillDone(finish) {
+  // Why this finish stays silent, or null when it rings.
+  async dropReason(finish) {
     const address = finish.note.action.args.terminal;
     const later = (shared(FINISHES) ?? []).some((other) => other.note.action.args.terminal === address && other.at > finish.at);
-    if (later || agents().find((agent) => agent.address === address)?.status !== "done") return false;
+    if (later) return "a later finish";
+
+    const status = agents().find((agent) => agent.address === address)?.status ?? "gone";
+    if (status !== "done") return `agent ${status}`;
 
     const reply = await hc(["read", address]).catch(() => null);
-    if (reply?.code !== 0) return true;
+    if (reply?.code !== 0) return null;
 
     const lines = bottom(reply.stdout);
-    return !background(lines) && workflows(lines).length === 0;
+    if (background(lines)) return "background";
+
+    return workflows(lines).length > 0 ? "workflow" : null;
   }
 
   ring({ overlay, ...note }) {

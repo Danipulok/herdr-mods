@@ -91,7 +91,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - Hover a row to pin it. Pinned agents go into a Pinned group on top, the same pins herdr-t3's inbox uses.
 - Click a row to focus the agent.
 - A finish alert (toast and sound) waits 3 seconds and is dropped if by then the agent works again, you looked at it, or its footer shows a shell, a monitor or a workflow still running: Claude Code often finishes a turn and starts the next at once. Needs the Herdr version under Requirements.
-- Every notification, gone in a few seconds on screen, stays in `~/.local/state/herdr-mods/notifications.jsonl` (under `$XDG_STATE_HOME` when set), one JSON line each, while the layout draws them with `toast-filter` (`my-t3` does).
+- Every notification, gone in a few seconds on screen, stays in `~/.local/state/herdr-mods/notifications.jsonl` (under `$XDG_STATE_HOME` when set), one JSON line each, while the layout draws them with `toast-filter` (`my-t3` does). Each held finish alert adds a line saying whether it rang, and if not, why.
 
 </details>
 
