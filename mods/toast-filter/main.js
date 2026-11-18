@@ -4,10 +4,9 @@
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { props, closeOverlay, run, theme, shared, setShared } from "herdr";
+import { FINISHES, record } from "./handoff.js";
 
 const DOT = { error: "blocked", warning: "working", success: "done", info: "accent" };
-// Canonical: mods/agent-list/finish.js `FINISHES`, keep in sync (a mod cannot import another's files).
-const FINISHES = "agents.finishes";
 const KEPT_MS = 60000;
 
 const fromHerdrFinish = (note) => !note.held && note.level === "info" && note.action?.name === "agent.focus" && / finished$/.test(note.title ?? "");
@@ -15,6 +14,7 @@ const fromHerdrFinish = (note) => !note.held && note.level === "info" && note.ac
 export default class Toast extends View {
   init() {
     const note = props() ?? {};
+    record({ kind: "toast", handedOver: fromHerdrFinish(note), ...note });
     if (!fromHerdrFinish(note)) return;
 
     closeOverlay(note.overlay);

@@ -16,7 +16,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 
 - `mods/folders` replaces the spaces list with folders.
 - `mods/agent-list` replaces the agents list with one sorted by what needs you, and rings a finished agent only once it stayed done.
-- `mods/toast-filter` is Herdr's toast mod, holding back Herdr's own finish toast for `agent-list`.
+- `mods/toast-filter` is Herdr's toast mod, holding back Herdr's own finish toast for `agent-list` and writing every notification to a log file.
 - `layouts/my-t3.json` is the `herdr-t3` layout with its spaces block pointed at `folders` and its agents block at `agent-list`, and its notifications drawn by `toast-filter`.
 - `keys.json` holds the keys of the `layout:my-t3` section.
 - `settings.json` points Herdr's done sound at a silent file, since `agent-list` plays it.
@@ -91,6 +91,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - Hover a row to pin it. Pinned agents go into a Pinned group on top, the same pins herdr-t3's inbox uses.
 - Click a row to focus the agent.
 - A finish alert (toast and sound) waits 3 seconds and is dropped if by then the agent works again, you looked at it, or its footer shows a shell, a monitor or a workflow still running: Claude Code often finishes a turn and starts the next at once. Needs the Herdr version under Requirements.
+- Every notification, gone in a few seconds on screen, stays in `~/.local/state/herdr-mods/notifications.jsonl` (under `$XDG_STATE_HOME` when set), one JSON line each, while the layout draws them with `toast-filter` (`my-t3` does).
 
 </details>
 

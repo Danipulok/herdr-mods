@@ -6,9 +6,8 @@
 
 import { agents, hc, notify, playSound, settings, shared } from "herdr";
 import { background, bottom, workflows } from "./footer.js";
+import { FINISHES } from "./handoff.js";
 
-// Mirrored in mods/toast-filter/main.js, keep in sync.
-const FINISHES = "agents.finishes";
 const HOLD_MS = 3000;
 const DONE_SOUND = "mods/agent-list/done.mp3";
 
