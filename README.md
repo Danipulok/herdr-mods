@@ -95,13 +95,14 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 </details>
 
 <details>
-<summary><b>Keys</b>: walk the spaces in list order, archive the front one</summary>
+<summary><b>Keys</b>: walk the spaces in list order, archive the front one, make one in its folder</summary>
 
 | Keys | Does |
 | --- | --- |
 | `alt-down`, `ctrl-shift-pagedown`, `ctrl-space shift-n` | Next space in list order, skipping folded folders |
 | `alt-up`, `ctrl-shift-pageup`, `ctrl-space shift-p` | Previous space |
 | `cmd-shift-w`, `ctrl-shift-w` | Archive the front space |
+| `ctrl-shift-s` | New space in the front space's folder, started in its start folder, as the folder's `+` |
 | `cmd-shift-b` | Show or hide the sidebar (herdr-t3) |
 | `cmd-shift-a` | Switch between the tab and the agent view (herdr-t3) |
 | `cmd-shift-s` | Settle an agent in the inbox (herdr-t3) |

@@ -396,9 +396,10 @@ export default class Spaces extends View {
       for (;;) {
         const c = String(await nextCommand()).split(".").pop();
         if (c === "next" || c === "prev") this.step(c === "next" ? 1 : -1);
-        // "folders.archive": the space in front.
-        const front = c === "archive" && spaces().find((w) => w.active);
-        if (front) this.archive(front, this.seen.find((e) => e.id === front.id)?.folder ?? null, cx);
+        // "folders.archive" archives the space in front; "folders.new" makes one in its folder, as that folder's + does.
+        const front = spaces().find((w) => w.active), folder = front ? this.seen.find((e) => e.id === front.id)?.folder ?? null : null;
+        if (c === "archive" && front) this.archive(front, folder, cx);
+        if (c === "new") newSpaceIn(front?.machine ?? null, folder);
         if (c === "job") this.job(cx);
         cx.notify();
       }
