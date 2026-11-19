@@ -32,7 +32,7 @@ async function readFolders(machine) {
   const r = await exec("sh", ["-c", `cat ${FILE} 2>/dev/null`], { on: machine });
   try {
     const d = JSON.parse(r.stdout);
-    return { list: d.list ?? [], of: d.of ?? {}, archive: d.archive ?? [], colors: d.colors ?? {}, at: d.at ?? 0 };
+    return { ...d, list: d.list ?? [], of: d.of ?? {}, archive: d.archive ?? [], at: d.at ?? 0 };
   } catch { return null; }
 }
 
@@ -216,10 +216,7 @@ function machineFolder(m, rows, ps) {
 //  made from (Ovis writes it too) gets `change` instead, or the save would undo that.
 const saving = {};
 function saveFolders(machine, change) {
-  const next = (data) => {
-    const changed = change(data);
-    return { list: changed.list, of: changed.of, archive: changed.archive ?? [], colors: changed.colors ?? data.colors ?? {}, pins: changed.pins ?? data.pins ?? {}, at: Date.now() };
-  };
+  const next = (data) => ({ ...change(data), at: Date.now() });
   const base = folders(machine), shown = next(base);
   setShared("space-folders", { ...all(), [key(machine)]: shown });
 
