@@ -12,7 +12,7 @@
 // machine's name or the folder one of its spaces works in.
 
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input } from "gpui-base";
+import { v_flex, h_flex, InputState, Input, SliderState, Slider, SliderTrack, SliderIndicator, SliderThumb } from "gpui-base";
 import { spaces, agents, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand, notify } from "herdr";
 import { recordFailures } from "./handoff.js";
 
@@ -295,6 +295,28 @@ const FALLBACK = 60000;
 // What a stored color name looks like on an avatar (the same in every mod
 // that draws space avatars): one strong color per hue, light and dark alike.
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
+// A stored color is one of those names or a "#rrggbb" of its own.
+const fillOf = (color) => MARK[color] ?? color;
+const HEX = /^#?([0-9a-f]{6})$/i;
+
+// Hue 0..360, saturation and lightness 0..100.
+function hslHex(hue, saturation, lightness) {
+  const light = lightness / 100, reach = (saturation / 100) * Math.min(light, 1 - light);
+  const channel = (n) => {
+    const k = (n + hue / 30) % 12;
+    return Math.round(255 * (light - reach * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, "0");
+  };
+  return `#${channel(0)}${channel(8)}${channel(4)}`;
+}
+
+function hexHsl(hex) {
+  const [red, green, blue] = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255);
+  const max = Math.max(red, green, blue), min = Math.min(red, green, blue), light = (max + min) / 2, spread = max - min;
+  if (!spread) return [0, 0, Math.round(light * 100)];
+
+  const sector = max === red ? ((green - blue) / spread) % 6 : max === green ? (blue - red) / spread + 2 : (red - green) / spread + 4;
+  return [Math.round((sector * 60 + 360) % 360), Math.round((spread / (1 - Math.abs(2 * light - 1))) * 100), Math.round(light * 100)];
+}
 
 // A space speaks up only when something in it needs you.
 export function glyph(status) {
@@ -337,6 +359,19 @@ function dialogParts(t) {
   return { button, field, choice };
 }
 
+// A space's own color, or null to let the least used one be picked again.
+function paintSpace(space, machine, color) {
+  const colorId = localId(space);
+  saveFolders(machine, (data) => {
+    const { [colorId]: _, ...colors } = data.colors ?? {};
+    return { ...data, colors: color ? { ...colors, [colorId]: color } : colors };
+  });
+  if (color) return;
+
+  const { [space.id]: _gone, ...rest } = shared("space.colors") ?? {};
+  setShared("space.colors", rest);
+}
+
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
@@ -355,6 +390,7 @@ export default class Spaces extends View {
       this.match = InputState.new({ value: f.match ?? "", placeholder: "e.g. web, ~/code/client-*" });
       this.chosenMode = f.restore ?? null;
       this.chosenEvery = everyMode();
+      this.colorState(f.color ?? null, theme().dim);
       // The rules follow the start folder until they're given rules of their own.
       this.mirror = !f.match || f.match === f.path;
       this.path.on("change", (_e, cx) => { if (this.mirror) { this.match.set_value(this.path.value()); cx.notify(); } });
@@ -491,6 +527,88 @@ export default class Spaces extends View {
   saveRestore(machine, change) {
     if (change) saveFolders(machine, change);
     if (this.chosenEvery !== everyMode()) setEvery(this.chosenEvery);
+  }
+
+  // A dialog's color: `color` is what is stored (a preset name, a "#rrggbb" or null), `shown` what null looks like now.
+  //  The hex field and the sliders write each other; `syncing` keeps one from answering the other's write.
+  colorState(color, shown) {
+    this.color = color;
+    this.colorShown = shown;
+    this.hex = InputState.new({ value: color ? fillOf(color) : "", placeholder: "#rrggbb" });
+    const [hue, saturation, lightness] = hexHsl(color ? fillOf(color) : shown);
+    this.hue = SliderState.new({ max: 360, value: hue });
+    this.saturation = SliderState.new({ value: saturation });
+    this.lightness = SliderState.new({ value: lightness });
+    for (const slider of [this.hue, this.saturation, this.lightness]) {
+      slider.on("change", (_value, cx) => {
+        if (this.syncing) return;
+
+        this.color = hslHex(this.hue.value(), this.saturation.value(), this.lightness.value());
+        this.syncing = true;
+        this.hex.set_value(this.color);
+        this.syncing = false;
+        cx.notify();
+      });
+    }
+
+    this.hex.on("change", (_e, cx) => {
+      if (this.syncing) return;
+
+      const typed = this.hex.value().trim(), hex = HEX.exec(typed);
+      if (!typed) this.color = null;
+      if (hex) {
+        this.color = `#${hex[1].toLowerCase()}`;
+        this.slideTo(this.color);
+      }
+
+      cx.notify();
+    });
+    this.hex.on("focus", (_e, cx) => { this.focused = "hex"; cx.notify(); });
+    this.hex.on("submit", (_e, cx) => (this.editing.space ? this.saveSpace(cx) : this.saveFolder(cx)));
+  }
+
+  slideTo(fill) {
+    this.syncing = true;
+    hexHsl(fill).forEach((value, at) => [this.hue, this.saturation, this.lightness][at].set_value(value));
+    this.syncing = false;
+  }
+
+  pickColor(color) {
+    this.color = color;
+    this.syncing = true;
+    this.hex.set_value(color ? fillOf(color) : "");
+    this.syncing = false;
+    if (color) this.slideTo(fillOf(color));
+  }
+
+  // Presets (`none` first or last, with its look), the hex field and three sliders, each track drawn in what it would give.
+  colorPart(t, none, noneFirst) {
+    const presets = noneFirst ? [null, ...Object.keys(MARK)] : [...Object.keys(MARK), null];
+    const swatch = (color) => div().id(`color-${color ?? "none"}`).size(22).flex_none().rounded(11).cursor_pointer()
+      .bg(color ? MARK[color] : none.fill).border_2().border_color(color === this.color ? t.foreground : t.popover)
+      .hover((el) => el.border_color(t.muted)).tooltip(color ? MARK[color] : none.label)
+      .on_click((_e, cx) => { this.pickColor(color); cx.notify(); })
+      .when(Boolean(none.mark) && !color, (el) => el.flex().items_center().justify_center().text_size(9).text_color(t.muted).child(none.mark));
+    const [hue, saturation, lightness] = [this.hue, this.saturation, this.lightness].map((slider) => slider.value());
+    const steps = [...Array(24).keys()].map((n) => n / 23);
+    const slider = (key, label, state, paint) => h_flex().gap(10).items_center()
+      .child(div().w(74).flex_none().text_size(12).text_color(t.muted).child(label))
+      .child(Slider.new(state).flex_1().child(SliderTrack.new(state).flex().items_center().h(20).w_full().child(
+        SliderIndicator.new(state).relative().w_full().h(8)
+          .child(h_flex().absolute().left(0).top(0).size_full().rounded(4).overflow_hidden()
+            .children(steps.map((step) => div().flex_1().h_full().bg(paint(step)))))
+          .child(SliderThumb.new(state).id(`${key}-thumb`).size(16).rounded(8).bg(this.color ? fillOf(this.color) : this.colorShown)
+            .border_2().border_color("#ffffff").ml(-8)))))
+      .child(div().w(30).flex_none().text_size(11.5).text_color(t.dim).child(String(state.value())));
+    return v_flex().gap(8)
+      .child(div().text_size(12).font_medium().text_color(t.muted).child("Color"))
+      .child(h_flex().gap(6).items_center().children(presets.map(swatch))
+        .child(div().flex_1())
+        .child(div().w(96).flex_none().h(30).px(8).flex().items_center().rounded(8).border_1().border_color(t.input).bg(t.background)
+          .child(Input.new(this.hex).w_full().text_size(12.5).text_color(t.foreground))))
+      .child(slider("color-hue", "Hue", this.hue, (step) => hslHex(step * 360, 75, 55)))
+      .child(slider("color-saturation", "Saturation", this.saturation, (step) => hslHex(hue, step * 100, lightness)))
+      .child(slider("color-lightness", "Lightness", this.lightness, (step) => hslHex(hue, saturation, step * 100)));
   }
 
   foldArchive(machine, folder, cx) {
@@ -816,6 +934,7 @@ export default class Spaces extends View {
     this.nameMirror = false;
     this.chosenMode = space ? folders(machine).restores?.[localId(space)] ?? null : null;
     this.chosenEvery = everyMode();
+    this.colorState(space ? folders(machine).colors?.[localId(space)] ?? null : null, fillOf(shared("space.colors")?.[id] ?? "ansi6"));
     this.focused = "path";
     this.hints = [];
     this.hintFor = null;
@@ -863,6 +982,7 @@ export default class Spaces extends View {
     const save = (full) => {
       if (name && name !== space.name) run("space.rename", { id, name });
       if (full !== pinned) pin(space, full);
+      if (this.color !== (folders(machine).colors?.[localId(space)] ?? null)) paintSpace(space, machine, this.color);
       this.saveRestore(machine, (data) => {
         const { [localId(space)]: _, ...restores } = data.restores ?? {};
         return { ...data, restores: this.chosenMode ? { ...restores, [localId(space)]: this.chosenMode } : restores };
@@ -890,6 +1010,7 @@ export default class Spaces extends View {
       .child(field("Folder", this.path, "Its folder, git status and folder rules go by this one. Filled with where its last Claude Code session started.",
         machine ? null : button("space-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
       .when(this.hintFor === "path" && this.hints.length > 0, (el) => el.child(this.hintList("path", t)))
+      .child(this.colorPart(t, { fill: t.input, label: "Automatic: the least used color", mark: "A" }, false))
       .children(this.restoreChoices(choice, "As its folder"))
       .when(Boolean(this.problem), (el) => el.child(div().text_size(12).text_color(t.ansi1).child(this.problem)))
       .child(h_flex().pt(4).gap(8).justify_end()
@@ -905,7 +1026,7 @@ export default class Spaces extends View {
       // A folder deleted while its dialog was open isn't made again; a new one is made now.
       saveFolders(machine, (f) => {
         const list = fresh && !f.list.some((x) => x.id === id) ? [...f.list, { id, name: NEW_FOLDER, folded: false }] : f.list;
-        return { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match, restore: this.chosenMode } : x) };
+        return { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match, color: this.color, restore: this.chosenMode } : x) };
       });
       this.saveRestore(machine, null);
       closeOverlay(overlay);
@@ -971,7 +1092,7 @@ export default class Spaces extends View {
     else if ((e.key === "down" || e.key === "up") && shown.length) this.hintAt = (this.hintAt + (e.key === "down" ? 1 : shown.length - 1)) % shown.length;
     else if (e.key === "tab" && !e.modifiers.shift && shown.length) this.takeHint(shown[this.hintAt], cx);
     else if (e.key === "tab") {
-      const fields = this.fields, next = fields[(fields.indexOf(this.focused) + (e.modifiers.shift ? fields.length - 1 : 1)) % fields.length];
+      const fields = [...this.fields, "hex"], next = fields[(fields.indexOf(this.focused) + (e.modifiers.shift ? fields.length - 1 : 1)) % fields.length];
       this.hints = [];
       this.focused = next;
       this[next].focus();
@@ -1105,18 +1226,8 @@ export default class Spaces extends View {
   spaceMenuView(t) {
     const { id, machine, git, folder, overlay } = this.spaceMenu, s = spaces().find((x) => x.id === id);
     if (!s) return div();
-    const f = folders(machine), colorId = localId(s), current = f.colors?.[colorId] ?? null;
-    const paint = (color) => {
-      saveFolders(machine, (data) => {
-        const { [colorId]: _, ...colors } = data.colors ?? {};
-        return { ...data, colors: color ? { ...colors, [colorId]: color } : colors };
-      });
-      if (!color) {
-        const { [machine ? `${machine}/${colorId}` : colorId]: _gone, ...rest } = shared("space.colors") ?? {};
-        setShared("space.colors", rest);
-      }
-      closeOverlay(overlay);
-    };
+    const current = folders(machine).colors?.[localId(s)] ?? null;
+    const paint = (color) => { paintSpace(s, machine, color); closeOverlay(overlay); };
     const swatch = (color) => div().id(`space-color-${color ?? "auto"}`).size(20).flex_none().rounded(10).cursor_pointer()
       .bg(color ? MARK[color] : t.input).border_2().border_color(color === current ? t.foreground : t.popover)
       .hover((el) => el.border_color(t.muted)).on_click(() => paint(color))
@@ -1185,6 +1296,7 @@ export default class Spaces extends View {
       .child(field("Collect spaces from", this.match,
         "Spaces working in these folders join this one. Comma-separated: a folder name like web, or a path like ~/code/client-*."))
       .when(this.hintFor === "match" && this.hints.length > 0, (el) => el.child(this.hintList("match", t)))
+      .child(this.colorPart(t, { fill: t.dim, label: "Grey", mark: null }, true))
       .children(this.restoreChoices(choice, "As every folder"))
       .when(Boolean(this.problem), (el) => el.child(div().text_size(12).text_color(t.ansi1).child(this.problem)))
       .child(h_flex().pt(4).gap(8).justify_end()
