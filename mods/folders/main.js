@@ -44,19 +44,27 @@ async function expand(machine, path) {
   return homes[key(machine)] + path.slice(1);
 }
 
-// A new space for a folder, in its start folder; with no folder (id null), one
-// in none, whichever space is in front. Herdr names no id back, so the sidebar
-// gives the first space that appears (on that machine, for a folder) its place
-// (see adopt).
+// Herdr's `space.new` starts a space without `folder` in the focused terminal's folder, whatever project that is,
+//  so a folder's space starts in its start folder, else where a space of that folder works, else in home.
+async function startFolder(machine, id) {
+  const f = folders(machine), path = id && f.list.find((x) => x.id === id)?.path;
+  if (path) return expand(machine, path).catch(() => null);
+
+  const ps = panes(), member = id && spaces().find((s) => (s.machine ?? null) === machine && folderOf(s, f, ps) === id);
+  if (member) return place(member, ps);
+
+  return id || machine ? expand(machine, "~") : null;
+}
+
+// Herdr names no id back, so the sidebar gives the first space that appears on that machine its place (see adopt).
 async function newSpaceIn(machine, id) {
-  const path = id && folders(machine).list.find((f) => f.id === id)?.path;
-  const folder = path ? await expand(machine, path).catch(() => null) : null;
-  if (path && !(await isFolder(machine, folder))) {
-    notify({ title: "Can't make a space there", body: `${path} is not a folder. Fix it in Edit folder.`, level: "error" });
+  const folder = await startFolder(machine, id);
+  if (folder && !(await isFolder(machine, folder))) {
+    notify({ title: "Can't make a space there", body: `${folder} is not a folder. Fix it in Edit folder.`, level: "error" });
     return;
   }
   setShared("space-folders.new", { machine, id, before: spaces().map((s) => s.id), until: Date.now() + 60000 });
-  run("space.new", { ...(machine ? { machine } : {}), ...(folder ? { folder } : {}) });
+  run("space.new", { machine: machine ?? "", ...(folder ? { folder } : {}) });
 }
 
 // Archived spaces stay in their folder's file: { id, name, label, folder, at, tabs:
@@ -128,15 +136,14 @@ async function restore(machine, entry, mode) {
     }
   }
 
-  // `run` names no result, so the entry leaves the archive only once its space shows up (see adopt):
-  //  a `space.new` that fails (`cannot start a terminal`) keeps it.
-  setShared("space-folders.new", { machine, id: entry.folder, before: spaces().map((s) => s.id), until: Date.now() + 60000, restored: entry.id });
+  // `run` names no result, so the entry leaves the archive, and the other tabs open, only once its space shows up
+  //  (see adopt): a `space.new` that fails (`cannot start a terminal`) keeps it, and opens no tab in another space.
   const argv = (c) => (fresh(c) ? ["claude"] : ["claude", "--resume", c.session]);
   const start = (c) => ({ ...(startIn(c) ? { folder: startIn(c) } : {}), ...(c.session ? { argv: argv(c) } : {}) });
   const [first, ...rest] = entry.tabs;
-  run("space.new", { ...(machine ? { machine } : {}), ...(entry.name ? { name: entry.name } : {}), ...(first.name ? { tab: first.name } : {}), ...start(first) });
-  // Herdr names no id back, and the new space is the one in front.
-  for (const c of rest) run("tab.new", { ...(c.name ? { name: c.name } : {}), ...start(c) });
+  const tabs = rest.map((c) => ({ ...(c.name ? { name: c.name } : {}), ...start(c) }));
+  setShared("space-folders.new", { machine, id: entry.folder, before: spaces().map((s) => s.id), until: Date.now() + 60000, restored: entry.id, tabs });
+  run("space.new", { machine: machine ?? "", ...(entry.name ? { name: entry.name } : {}), ...(first.name ? { tab: first.name } : {}), ...start(first) });
   return true;
 }
 
@@ -701,13 +708,12 @@ export default class Spaces extends View {
   adopt(sp, now) {
     const want = shared("space-folders.new");
     if (!want) return null;
-    // In no folder, Herdr picks the machine (the one in front): any will do.
-    const on = (s) => !want.id || (s.machine ?? null) === (want.machine ?? null);
-    const before = new Set(want.before), fresh = sp.find((s) => !before.has(s.id) && on(s));
+    const before = new Set(want.before), fresh = sp.find((s) => !before.has(s.id) && (s.machine ?? null) === (want.machine ?? null));
     if (fresh || now > want.until) setShared("space-folders.new", null);
     if (!fresh) return null;
 
     if (want.restored) forget(want.machine, want.restored);
+    for (const tab of want.tabs ?? []) run("tab.new", { ...tab, space: fresh.id, focus: false });
 
     const f = folders(want.machine);
     if (f.list.some((x) => x.id === want.id)) saveFolders(want.machine, (data) => ({ ...data, of: { ...data.of, [localId(fresh)]: want.id } }));
@@ -762,6 +768,8 @@ export default class Spaces extends View {
     const was = this.front;
     if (!was?.id || sp.some((s) => s.id === was.id)) return;
     this.front = null;
+    // A machine going away takes its spaces with it: nothing was closed.
+    if (was.machine && !sp.some((s) => s.machine === was.machine)) return;
     if (was.near && sp.some((s) => s.id === was.near)) run("space.select", { id: was.near });
   }
 
