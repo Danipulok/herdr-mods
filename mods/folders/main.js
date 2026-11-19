@@ -588,7 +588,7 @@ export default class Spaces extends View {
       .bg(color ? MARK[color] : none.fill).border_2().border_color(color === this.color ? t.foreground : t.popover)
       .hover((el) => el.border_color(t.muted)).tooltip(color ? MARK[color] : none.label)
       .on_click((_e, cx) => { this.pickColor(color); cx.notify(); })
-      .when(Boolean(none.mark) && !color, (el) => el.flex().items_center().justify_center().text_size(9).text_color(t.muted).child(none.mark));
+      .when(Boolean(none.mark) && !color, (el) => el.flex().items_center().justify_center().child(svg(none.mark).size(12).text_color(t.muted)));
     const [hue, saturation, lightness] = [this.hue, this.saturation, this.lightness].map((slider) => slider.value());
     const steps = [...Array(24).keys()].map((n) => n / 23);
     const slider = (key, label, state, paint) => h_flex().gap(10).items_center()
@@ -1010,7 +1010,7 @@ export default class Spaces extends View {
       .child(field("Folder", this.path, "Its folder, git status and folder rules go by this one. Filled with where its last Claude Code session started.",
         machine ? null : button("space-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
       .when(this.hintFor === "path" && this.hints.length > 0, (el) => el.child(this.hintList("path", t)))
-      .child(this.colorPart(t, { fill: t.input, label: "Automatic: the least used color", mark: "A" }, false))
+      .child(this.colorPart(t, { fill: t.input, label: "Automatic: the least used color", mark: "mods/folders/auto.svg" }, false))
       .children(this.restoreChoices(choice, "As its folder"))
       .when(Boolean(this.problem), (el) => el.child(div().text_size(12).text_color(t.ansi1).child(this.problem)))
       .child(h_flex().pt(4).gap(8).justify_end()
@@ -1231,7 +1231,7 @@ export default class Spaces extends View {
     const swatch = (color) => div().id(`space-color-${color ?? "auto"}`).size(20).flex_none().rounded(10).cursor_pointer()
       .bg(color ? MARK[color] : t.input).border_2().border_color(color === current ? t.foreground : t.popover)
       .hover((el) => el.border_color(t.muted)).on_click(() => paint(color))
-      .when(!color, (el) => el.flex().items_center().justify_center().text_size(9).text_color(t.muted).child("A"));
+      .when(!color, (el) => el.flex().items_center().justify_center().child(svg("mods/folders/auto.svg").size(12).text_color(t.muted)));
     const item = (key, label, icon, action, tone = null) => h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
       .when(Boolean(tone), (el) => el.text_color(tone))
       .hover((el) => el.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
