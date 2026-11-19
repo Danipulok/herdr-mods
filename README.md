@@ -40,6 +40,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
   - Name.
   - Start new spaces in: the directory its `+` and New space here open a space in, with Choose… and path completion. A path that is not a directory shows an error.
   - Collect spaces from: comma-separated rules. `~` is any home, `*` is one directory name, a bare name (`web`) matches at any depth, the deepest match wins. It follows the start folder until you edit it.
+  - Restoring a Claude Code chat from the archive: as every folder, resume it, or start a new one; and the same for every folder.
   - Tab and Shift+Tab move between fields; Up, Down and Tab pick a completion.
 - Delete a folder and its spaces go where the other folders' rules put them.
 - The folders live in `~/.config/herdr-space-folders.json`, the file [herdr-space-folders](https://github.com/jankeesvw/herdr-space-folders) uses, so folders made with that mod show up here. A newer file on disk wins, and the file is re-read every 15 seconds and on change.
@@ -57,7 +58,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - A linked worktree sits under its checkout with tree lines; the checkout's avatar becomes a fold arrow for its worktrees.
 - Drag a space onto another to move it there and into that folder. While dragging, a "Drop here to take it out of its folder" zone shows.
 - A space dropped into a folder by hand stays there, whatever the rules say.
-- Right-click a space: color swatches with an automatic one, Edit space… (name and a pinned folder; empty means follow its terminals), Git pull, New worktree, Open worktree, Remove worktree (linked ones), Archive, Close.
+- Right-click a space: color swatches with an automatic one, Edit space… (name, a pinned folder, empty to follow its terminals, and how its Claude Code chat restores), Git pull, New worktree, Open worktree, Remove worktree (linked ones), Archive, Close.
 - A space made from the front one (keys, palette) lands right under it in the same folder; one made from a folder's `+` joins that folder. Closing the front space selects the one above it.
 - Spaces of another machine get their own header, or sit inside the first folder whose rules match.
 - Narrower than 160px, the list draws a compact rail of avatars.
@@ -70,7 +71,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - Archive a space from its right-click menu, the hover button, or `ctrl-shift-w` / `cmd-shift-w`. Each tab's name, directory and Claude Code session are recorded, then the space closes.
 - A folder ends with an `Archive N` row. Open, it lists the archived spaces newest first with their age (`5h`, `3d`); see the Spaces screenshot. Archiving or restoring a space folds it.
 - Hover an archived row for its restore button, Shift-click it to restore the other way; right-click it for both restores and Delete.
-- Restore checks each directory still exists, opens the space and its tabs, and where a session was recorded runs `claude --resume <session>`, or a new `claude` in the folder the tab was in. Which one: right-click the `Archive` row for this folder's choice and the one for every folder (resume by default). Sessions come from ccgram, see [Requirements](#requirements).
+- Restore checks each directory still exists, opens the space and its tabs, and where a session was recorded runs `claude --resume <session>`, or a new `claude` in the folder the tab was in. Which one: the space's own choice, else its folder's, else the one for every folder (resume by default). Set them in Edit space…, in Edit folder…, or by right-clicking the `Archive` row. Sessions come from ccgram, see [Requirements](#requirements).
 
 </details>
 

@@ -73,9 +73,13 @@ async function newSpaceIn(machine, id) {
 // looks a session up by that folder only. A new chat starts where the tab was (`live`).
 const SESSIONS = "~/.ccgram/session_map.json";
 
-// How a restore starts a tab that had a Claude Code session: its folder's own `restore`, else this, for every folder.
-const RESTORE = "folders.restore";
-const restoreMode = (machine, folder) => folders(machine).list.find((f) => f.id === folder)?.restore ?? shared(RESTORE) ?? "resume";
+// How a restore starts a tab that had a Claude Code session, the most specific setting first: the one of the archived
+//  space (`restore` of its entry, copied from `restores` when it was archived), of its folder, then of every folder
+//  (`restore` in the file of this computer).
+const everyMode = () => folders(null).restore ?? "resume";
+const restoreMode = (machine, entry) => entry.restore ?? folders(machine).list.find((f) => f.id === entry.folder)?.restore ?? everyMode();
+const setEvery = (mode) => saveFolders(null, (f) => ({ ...f, restore: mode }));
+const MODE_NAME = { resume: "Resume the chat", new: "Start a new chat" };
 const otherMode = (mode) => (mode === "new" ? "resume" : "new");
 const RESTORE_LABEL = { resume: "Restore, resume the chat", new: "Restore with a new chat" };
 
@@ -102,10 +106,11 @@ async function archive(s, folder) {
     tabs.push({ name: c.named ? c.name : null, cwd, live, terminal, session });
   }
 
-  const entry = { id: `a${Date.now().toString(36)}`, name: s.named ? s.name : null, label: s.name, folder, at: Date.now(), tabs };
+  const restore = folders(machine).restores?.[localId(s)] ?? null;
+  const entry = { id: `a${Date.now().toString(36)}`, name: s.named ? s.name : null, label: s.name, folder, at: Date.now(), restore, tabs };
   saveFolders(machine, (f) => {
-    const { [localId(s)]: _, ...of } = f.of;
-    return { ...f, of, archive: [...(f.archive ?? []), entry] };
+    const { [localId(s)]: _, ...of } = f.of, { [localId(s)]: _mode, ...restores } = f.restores ?? {};
+    return { ...f, of, restores, archive: [...(f.archive ?? []), entry] };
   });
   run("space.close", { id: s.id, confirmed: true });
 }
@@ -322,7 +327,14 @@ function dialogParts(t) {
         .child(Input.new(input).w_full().text_size(13).text_color(t.foreground)))
       .when(Boolean(extra), (el) => el.child(extra)))
     .when(Boolean(hint), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(hint)));
-  return { button, field };
+  // One of a few answers, the chosen one outlined; `pick` holds it until the dialog is saved.
+  const choice = (key, label, options, value, pick) => v_flex().gap(6)
+    .child(div().text_size(12).font_medium().text_color(t.muted).child(label))
+    .child(h_flex().gap(6).children(options.map(([option, text]) => h_flex().id(`${key}-${option ?? "inherit"}`).h(30).px(10).flex_none()
+      .items_center().rounded(8).border_1().border_color(option === value ? t.accent : t.input).bg(option === value ? t.selected : t.raised)
+      .text_size(12.5).text_color(t.foreground).cursor_pointer().hover((s) => s.bg(t.hover))
+      .on_click((_e, cx) => { pick(option); cx.notify(); }).child(text))));
+  return { button, field, choice };
 }
 
 export default class Spaces extends View {
@@ -341,6 +353,8 @@ export default class Spaces extends View {
       this.name = InputState.new({ value: f.name ?? "" });
       this.path = InputState.new({ value: f.path ?? "", placeholder: "e.g. ~/Documents/github.com/owner/repo" });
       this.match = InputState.new({ value: f.match ?? "", placeholder: "e.g. web, ~/code/client-*" });
+      this.chosenMode = f.restore ?? null;
+      this.chosenEvery = everyMode();
       // The rules follow the start folder until they're given rules of their own.
       this.mirror = !f.match || f.match === f.path;
       this.path.on("change", (_e, cx) => { if (this.mirror) { this.match.set_value(this.path.value()); cx.notify(); } });
@@ -462,6 +476,21 @@ export default class Spaces extends View {
         return mode ? { ...rest, restore: mode } : rest;
       }),
     }));
+  }
+
+  // A dialog's restore settings: its own space's or folder's (`inherit` names what leaving it unset means), and every folder's.
+  restoreChoices(choice, inherit) {
+    const modes = [["resume", MODE_NAME.resume], ["new", MODE_NAME.new]];
+    return [
+      choice("restore-own", "Restoring a Claude Code chat from the archive", [[null, inherit], ...modes], this.chosenMode, (mode) => { this.chosenMode = mode; }),
+      choice("restore-every", "The same, in every folder", modes, this.chosenEvery, (mode) => { this.chosenEvery = mode; }),
+    ];
+  }
+
+  // Saves the space's own choice through `change` (null: the folder's went with the folder), then every folder's.
+  saveRestore(machine, change) {
+    if (change) saveFolders(machine, change);
+    if (this.chosenEvery !== everyMode()) setEvery(this.chosenEvery);
   }
 
   foldArchive(machine, folder, cx) {
@@ -785,6 +814,8 @@ export default class Spaces extends View {
 
     this.mirror = false;
     this.nameMirror = false;
+    this.chosenMode = space ? folders(machine).restores?.[localId(space)] ?? null : null;
+    this.chosenEvery = everyMode();
     this.focused = "path";
     this.hints = [];
     this.hintFor = null;
@@ -832,6 +863,10 @@ export default class Spaces extends View {
     const save = (full) => {
       if (name && name !== space.name) run("space.rename", { id, name });
       if (full !== pinned) pin(space, full);
+      this.saveRestore(machine, (data) => {
+        const { [localId(space)]: _, ...restores } = data.restores ?? {};
+        return { ...data, restores: this.chosenMode ? { ...restores, [localId(space)]: this.chosenMode } : restores };
+      });
       closeOverlay(overlay);
     };
     if (!folder) return save(null);
@@ -847,7 +882,7 @@ export default class Spaces extends View {
 
   spaceEditView(t) {
     const { machine, overlay } = this.editing;
-    const { button, field } = dialogParts(t);
+    const { button, field, choice } = dialogParts(t);
     return v_flex().id("space-edit").w_full().p(20).gap(16).bg(t.popover).text_color(t.foreground)
       .on_key_down((e, cx) => this.editKey(e, cx))
       .child(div().text_size(15).font_semibold().child("Edit space"))
@@ -855,6 +890,7 @@ export default class Spaces extends View {
       .child(field("Folder", this.path, "Its folder, git status and folder rules go by this one. Filled with where its last Claude Code session started.",
         machine ? null : button("space-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
       .when(this.hintFor === "path" && this.hints.length > 0, (el) => el.child(this.hintList("path", t)))
+      .children(this.restoreChoices(choice, "As its folder"))
       .when(Boolean(this.problem), (el) => el.child(div().text_size(12).text_color(t.ansi1).child(this.problem)))
       .child(h_flex().pt(4).gap(8).justify_end()
         .child(button("space-cancel", "Cancel", false, () => closeOverlay(overlay)))
@@ -869,8 +905,9 @@ export default class Spaces extends View {
       // A folder deleted while its dialog was open isn't made again; a new one is made now.
       saveFolders(machine, (f) => {
         const list = fresh && !f.list.some((x) => x.id === id) ? [...f.list, { id, name: NEW_FOLDER, folded: false }] : f.list;
-        return { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) };
+        return { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match, restore: this.chosenMode } : x) };
       });
+      this.saveRestore(machine, null);
       closeOverlay(overlay);
     };
     if (!path) return save();
@@ -1108,7 +1145,7 @@ export default class Spaces extends View {
       .when(Boolean(tone), (el) => el.text_color(tone))
       .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); if (entry) action(); })
       .child(svg(icon).size(13).flex_none().text_color(tone ?? t.muted)).child(label);
-    const mode = entry ? restoreMode(machine, entry.folder) : "resume";
+    const mode = entry ? restoreMode(machine, entry) : "resume";
     const restoreItem = (key, choice) => item(key, RESTORE_LABEL[choice], "mods/folders/archive-restore.svg", () => sidebarJob({ do: "restore", machine, id, mode: choice }));
     return v_flex().id("archived-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(restoreItem("archived-restore", mode))
@@ -1119,8 +1156,7 @@ export default class Spaces extends View {
   // An archive's right-click menu: how its folder restores a Claude Code tab, and how every folder does.
   archiveMenuView(t) {
     const { folder, machine, overlay } = this.archiveMenu;
-    const own = folders(machine).list.find((x) => x.id === folder)?.restore ?? null, every = shared(RESTORE) ?? "resume";
-    const names = { resume: "Resume the chat", new: "Start a new chat" };
+    const own = folders(machine).list.find((x) => x.id === folder)?.restore ?? null, every = everyMode();
     const heading = (label) => div().px(10).pt(6).pb(2).text_size(11.5).text_color(t.dim).child(label);
     const item = (key, label, chosen, action) => h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
       .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
@@ -1128,17 +1164,17 @@ export default class Spaces extends View {
     return v_flex().id("archive-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .when(Boolean(folder), (el) => el
         .child(heading("Restoring in this folder"))
-        .child(item("archive-folder-every", `As every folder: ${names[every].toLowerCase()}`, own === null, () => this.setRestore(machine, folder, null)))
-        .child(item("archive-folder-resume", names.resume, own === "resume", () => this.setRestore(machine, folder, "resume")))
-        .child(item("archive-folder-new", names.new, own === "new", () => this.setRestore(machine, folder, "new"))))
+        .child(item("archive-folder-every", `As every folder: ${MODE_NAME[every].toLowerCase()}`, own === null, () => this.setRestore(machine, folder, null)))
+        .child(item("archive-folder-resume", MODE_NAME.resume, own === "resume", () => this.setRestore(machine, folder, "resume")))
+        .child(item("archive-folder-new", MODE_NAME.new, own === "new", () => this.setRestore(machine, folder, "new"))))
       .child(heading("Restoring in every folder"))
-      .child(item("archive-every-resume", names.resume, every === "resume", () => setShared(RESTORE, "resume")))
-      .child(item("archive-every-new", names.new, every === "new", () => setShared(RESTORE, "new")));
+      .child(item("archive-every-resume", MODE_NAME.resume, every === "resume", () => setEvery("resume")))
+      .child(item("archive-every-new", MODE_NAME.new, every === "new", () => setEvery("new")));
   }
 
   editView(t) {
     const { machine, overlay } = this.editing;
-    const { button, field } = dialogParts(t);
+    const { button, field, choice } = dialogParts(t);
     return v_flex().id("folder-edit").w_full().p(20).gap(16).bg(t.popover).text_color(t.foreground)
       .on_key_down((e, cx) => this.editKey(e, cx))
       .child(div().text_size(15).font_semibold().child("Edit folder"))
@@ -1149,6 +1185,7 @@ export default class Spaces extends View {
       .child(field("Collect spaces from", this.match,
         "Spaces working in these folders join this one. Comma-separated: a folder name like web, or a path like ~/code/client-*."))
       .when(this.hintFor === "match" && this.hints.length > 0, (el) => el.child(this.hintList("match", t)))
+      .children(this.restoreChoices(choice, "As every folder"))
       .when(Boolean(this.problem), (el) => el.child(div().text_size(12).text_color(t.ansi1).child(this.problem)))
       .child(h_flex().pt(4).gap(8).justify_end()
         .child(button("folder-cancel", "Cancel", false, () => closeOverlay(overlay)))
@@ -1411,7 +1448,7 @@ export default class Spaces extends View {
 
   // Restores the way the entry's folder says; with Shift, the other way.
   restoreTool(machine, e, t) {
-    const mode = restoreMode(machine, e.folder), other = otherMode(mode);
+    const mode = restoreMode(machine, e), other = otherMode(mode);
     const label = `${RESTORE_LABEL[mode]} (Shift: ${RESTORE_LABEL[other].toLowerCase()})`;
     return this.tool(`archived-restore-${e.id}`, label, "mods/folders/archive-restore.svg", t,
       (cx, click) => this.restore(machine, e, click.modifiers.shift ? other : mode, cx)).tooltip(label);
