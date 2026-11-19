@@ -15,6 +15,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, SliderState, Slider, SliderTrack, SliderIndicator, SliderThumb } from "gpui-base";
 import { spaces, agents, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand, notify } from "herdr";
 import { recordFailures } from "./handoff.js";
+import { UPDATE, announceInstalled, checkUpdate, install, startChecking, stopChecking, updatePrompt } from "./update.js";
 
 // A machine's folders live in a file in its home, so every screen showing its
 // spaces shows the same folders: { list: [{ id, name, folded }], of: { spaceId:
@@ -375,7 +376,8 @@ function paintSpace(space, machine, color) {
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, archivedMenu, archiveMenu, spaceMenu, editSpace, git = null, folder = null, edit, machine = null, fresh = false, overlay } = props() ?? {};
+    const { update, folderMenu, archivedMenu, archiveMenu, spaceMenu, editSpace, git = null, folder = null, edit, machine = null, fresh = false, overlay } = props() ?? {};
+    if (update) { this.update = { overlay }; return; }
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (archivedMenu) { this.archivedMenu = { id: archivedMenu, machine, overlay }; return; }
     if (archiveMenu) { this.archiveMenu = { folder, machine, overlay }; return; }
@@ -449,6 +451,9 @@ export default class Spaces extends View {
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // Another screen may have changed them: read every machine's file again now and then.
     this.loadFolders(cx);
+    announceInstalled();
+    cx.spawn(async () => checkUpdate());
+    cx.timer.every(60 * 60 * 1000, (cx) => cx.spawn(async () => checkUpdate()));
     cx.timer.every(15000, cx => this.loadFolders(cx));
     this.watchFolders(cx);
     // `git status` walks the whole tree, on another machine a process there:
@@ -466,6 +471,8 @@ export default class Spaces extends View {
         if (c === "archive" && front) this.archive(front, folder, cx);
         if (c === "new") newSpaceIn(front?.machine ?? null, folder);
         if (c === "job") this.job(cx);
+        if (c === "update" && shared(UPDATE)) openOverlay({ mod: "folders", kind: "dialog", width: 540, props: { update: true } });
+        if (c === "check-updates") { startChecking(); cx.spawn(async () => checkUpdate()); }
         cx.notify();
       }
     });
@@ -1249,6 +1256,52 @@ export default class Spaces extends View {
       .child(item("space-close", "Close", "x", () => run("space.close", { id }), t.ansi1));
   }
 
+  // The update toast's dialog: Update installs the release here; when that fails, or by choice,
+  //  the prompt an agent updates the mods with, to copy into a new space.
+  updateView(t) {
+    const { overlay } = this.update, found = shared(UPDATE);
+    if (!found) return div();
+
+    const { button } = dialogParts(t), prompt = updatePrompt(found);
+    const copy = (cx) => { cx.write_to_clipboard(prompt); this.copied = true; cx.notify(); };
+    const update = (_e, cx) => {
+      this.installing = true;
+      this.failure = null;
+      cx.notify();
+      cx.spawn(async (cx) => {
+        this.failure = await install(found.latest);
+        this.installing = false;
+        this.agent = Boolean(this.failure);
+        cx.notify();
+      });
+    };
+    const agentPart = v_flex().gap(10)
+      .child(div().text_size(12.5).text_color(t.muted).child("Create a new space and give its agent this prompt:"))
+      .child(div().id("update-prompt").p(10).rounded(8).border_1().border_color(t.input).bg(t.background).text_size(12.5).child(prompt))
+      .child(h_flex().gap(8).justify_end()
+        .child(button("update-copy", this.copied ? "Copied" : "Copy", false, (_e, cx) => copy(cx)))
+        .child(button("update-space", "Copy and open a new space", false, (_e, cx) => {
+          copy(cx);
+          sidebarJob({ do: "new", machine: null, id: null });
+          closeOverlay(overlay);
+        })));
+    return v_flex().id("update").w_full().p(20).gap(14).bg(t.popover).text_color(t.foreground)
+      .on_key_down((e) => { if (e.key === "escape") closeOverlay(overlay); })
+      .child(div().text_size(15).font_semibold().child(`Update herdr-mods to ${found.latest}`))
+      .child(div().text_size(12.5).text_color(t.muted).child(this.installing
+        ? "Downloading the release and running its just deploy…"
+        : "Update downloads the release and runs its just deploy, which needs curl, tar, just and jq."))
+      .when(Boolean(this.failure), (el) => el.child(v_flex().gap(4)
+        .child(div().text_size(12.5).text_color(t.ansi1).child("The update failed:"))
+        .child(div().p(8).rounded(6).bg(t.background).text_size(11.5).text_color(t.muted).child(this.failure ?? ""))))
+      .when(Boolean(this.agent), (el) => el.child(agentPart))
+      .child(h_flex().pt(4).gap(8)
+        .child(button("update-stop", "Stop checking", false, () => { stopChecking(); closeOverlay(overlay); }))
+        .child(div().flex_1())
+        .when(!this.agent, (el) => el.child(button("update-agent", "Use an agent", false, (_e, cx) => { this.agent = true; cx.notify(); })))
+        .when(!this.installing, (el) => el.child(button("update-install", this.failure ? "Try again" : "Update", true, update))));
+  }
+
   archivedMenuView(t) {
     const { id, machine, overlay } = this.archivedMenu;
     const entry = (folders(machine).archive ?? []).find((x) => x.id === id);
@@ -1596,6 +1649,7 @@ export default class Spaces extends View {
     if (this.archivedMenu) return this.archivedMenuView(t);
     if (this.archiveMenu) return this.archiveMenuView(t);
     if (this.spaceMenu) return this.spaceMenuView(t);
+    if (this.update) return this.updateView(t);
     if (this.editing?.space) return this.spaceEditView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();

@@ -5,7 +5,10 @@
       "release-type": "simple",
       "initial-version": "1.0.0",
       "include-component-in-tag": false,
-      "pull-request-title-pattern": "chore(release): release ${version}"
+      "pull-request-title-pattern": "chore(release): release ${version}",
+      "extra-files": [
+        "mods/folders/version.js"
+      ]
     }
   }
 }

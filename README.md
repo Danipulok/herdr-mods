@@ -98,6 +98,17 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 </details>
 
 <details>
+<summary><b>Updates</b>: a toast when a new release is out, installed by one button</summary>
+
+- Every 6 hours the folders mod asks GitHub for the newest release (`api.github.com`, no token) and compares it with the installed version.
+- When a newer one is out, a toast at the bottom right says so, at most once a day. Click it for the update dialog.
+- Update downloads that release into `~/.cache/herdr-mods/<version>` (or `$XDG_CACHE_HOME/herdr-mods`) and runs its `just deploy`; it needs `curl` and `tar` besides the [requirements](#requirements). A toast says when the new version is running.
+- If that fails, or with Use an agent, the dialog shows a prompt to give an agent in a new space, with Copy and Copy and open a new space.
+- Stop checking turns the checks off; `herdr-app do folders.check-updates` turns them on again and checks at once.
+
+</details>
+
+<details>
 <summary><b>Keys</b>: walk the spaces in list order, archive the front one, make one in its folder</summary>
 
 | Keys | Does |
