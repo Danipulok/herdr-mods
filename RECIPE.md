@@ -19,7 +19,7 @@ The window is herdr-t3's, as its [recipe](https://github.com/JinJieBeWater/herdr
   - Each folder as a 30px head: an 18px rounded tile in the folder's color with a white folder glyph, the name, then a `+` (new space in this folder), the count of its spaces and a chevron. Colors: `#22a99a`, `#e3814f`, `#5b8def`, `#8b7cf6`, `#3fae6a`, `#d9649a`, or grey for none. Folded, the head also shows the most urgent agent state of its spaces (a spinner or a dot).
   - Under an open folder, its spaces as 30px rows indented 26px: an 18px colored square avatar with the space's initial, the name (at most 150px), and only unusual git info at the right (`repo · branch`, `↑2` in green, `↓1` in red, with `main` and `master` left out). A linked worktree sits under its checkout with tree lines and a branch glyph in place of the avatar.
   - At a folder's end, an `Archive N` row (archive glyph, dim) when it holds archived spaces. Open, it lists them newest first with their age (`3d`).
-  - Spaces in no folder come after the folders, then their own archived spaces. Another machine gets its own header, or sits inside the first folder whose rules match its name or one of its spaces' folders.
+  - Spaces in no folder come after the folders, then their own archived spaces. Another machine gets its own header (a `server` glyph, its name, a green dot when connected, else its state; New folder here and New space here buttons; a click folds it), or sits inside the first folder whose rules match its name or one of its spaces' folders.
   - Narrower than 160px, the list draws the compact rail of avatars instead.
 - **Agents** (`agent-list` mod):
   - A heading `Agents` with a 26px sort button (clock icon for Priority, layers for Grouped by space).

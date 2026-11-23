@@ -23,6 +23,17 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 
 [`RECIPE.md`](RECIPE.md) describes the same features in the form an agent rebuilds them from: sizes, colors and the commands each mod runs.
 
+## Use cases
+
+- **Many projects in one window**: a folder per client or area collects every space working under its directories, and a new space opens in the folder's own start directory. See Folders.
+- **Branches side by side**: open a worktree from a space's menu; it sits under its checkout with its branch and folds with it. See Spaces.
+- **Putting work away for later**: archive a space at the end of the day and restore it with its tabs, each Claude Code chat resumed or started fresh as you set per space, per folder or for all. See Archive.
+- **Many agents at once**: the agent that asked a question sits on top, then the finished ones, then the working ones; one that ended its turn with a shell, a monitor or a workflow still running waits under Background, not Done. See Agents.
+- **Fewer false finish alerts**: the toast and sound come only once an agent stayed done with nothing running behind it, and every notification, even one gone in seconds, stays in a log file. See Agents.
+- **Agents on other machines**: their spaces get a header of their own, or join the local folder whose rules match them. See Spaces.
+- **Chat bridges that group by project**: each agent terminal carries its folder's name as a Herdr label, for a bridge naming its topics. See Spaces.
+- **Staying up to date**: a toast says when a release is out, and one button installs it. See Updates.
+
 ## Features
 
 <details>
@@ -61,7 +72,8 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - A space dropped into a folder by hand stays there, whatever the rules say.
 - Right-click a space: color swatches with an automatic one, Edit space… (name, a pinned folder, empty to follow its terminals, its color with the same editor as Edit folder, and how its Claude Code chat restores), Git pull, New worktree, Open worktree, Remove worktree (linked ones), Archive, Close.
 - A space made from the front one (keys, palette) lands right under it in the same folder; one made from a folder's `+` joins that folder. Closing the front space selects the one above it.
-- Spaces of another machine get their own header, or sit inside the first folder whose rules match.
+- Spaces of another machine get their own header, or sit inside the first folder whose rules match. The header folds on a click, carries New folder here and New space here while the machine is connected, and shows its state (`asleep`) while it is not.
+- Every agent's terminal gets the label `herdr.folder=<folder name>` (`hc label`), kept in step with its space's folder, so a tool reading Herdr labels, such as a Telegram bridge naming its topics, can group agents by folder.
 - Narrower than 160px, the list draws a compact rail of avatars.
 
 </details>
