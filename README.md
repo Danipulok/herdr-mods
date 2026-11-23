@@ -156,7 +156,9 @@ herdr-app do layout.switch --name my-t3
    ```
 3. Drop the layout's keys:
    ```sh
-. Give Herdr its done sound back:
+   jq 'del(.["layout:my-t3"])' ~/.config/herdr-app/keys.json > keys.tmp && mv keys.tmp ~/.config/herdr-app/keys.json
+   ```
+4. Give Herdr its done sound back:
    ```sh
    jq 'del(.sounds.done)' ~/.config/herdr-app/settings.json > settings.tmp && mv settings.tmp ~/.config/herdr-app/settings.json
    ```
