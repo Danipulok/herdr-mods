@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.5.0](https://github.com/Danipulok/herdr-mods/compare/v1.4.0...v1.5.0) (2026-11-23)
+
+
+### Features
+
+* **agent-list:** log whether each held finish alert rang, and why not ([13b830c](https://github.com/Danipulok/herdr-mods/commit/13b830cd28d3cfb2265715fcf83e6f0ee168eabc))
+* **folders:** check for a newer release every 6 hours and install it from the toast, with an agent prompt as the fallback ([c8dc7f8](https://github.com/Danipulok/herdr-mods/commit/c8dc7f868daaaddc9dae199bcd739fb7d6866818))
+* **folders:** choose per folder and for all whether restore resumes the chat or starts a new one ([4230850](https://github.com/Danipulok/herdr-mods/commit/4230850f397a30473084bf23e5b7282875b24c23))
+* **folders:** edit the color in Edit space and Edit folder with presets, a hex field and HSL sliders ([c5df208](https://github.com/Danipulok/herdr-mods/commit/c5df2080985c74ed54050f0ee3f1b5747648424b))
+* **folders:** move `folders.new` to `alt-shift-s` ([fe7d7d0](https://github.com/Danipulok/herdr-mods/commit/fe7d7d067bc9933a437811475571b211b7c9f0a6))
+* **folders:** set the restore mode per space and for every folder in Edit space and Edit folder ([dddaac0](https://github.com/Danipulok/herdr-mods/commit/dddaac013fe1fc33c4d6b32c7005ec57557a1f9f))
+* **mods:** log every render error a mod flashes as a banner ([d32f555](https://github.com/Danipulok/herdr-mods/commit/d32f555cf3e418b50e2c26efb810f811fc6c281a))
+* **toast-filter:** append every notification to a local log file ([779023c](https://github.com/Danipulok/herdr-mods/commit/779023c3ffb0a67d638c58dec61efec6620e6f01))
+
+
+### Bug Fixes
+
+* **folders:** center the automatic color swatch mark with an icon instead of a letter ([61c6a21](https://github.com/Danipulok/herdr-mods/commit/61c6a21bba3e176d901edd11d85c270bda4402dd))
+* **folders:** keep an archived space until its restored space shows up ([a2b09ca](https://github.com/Danipulok/herdr-mods/commit/a2b09ca12bd1b63cf450dc5e28301743a6328da2))
+* **folders:** keep every key of the folders file, so a reread no longer drops pinned folders ([dced439](https://github.com/Danipulok/herdr-mods/commit/dced439770de91fda77bbc917f6d27a0a6123b83))
+* **folders:** open a new space in its folder and restored tabs in the restored space ([1d5b07b](https://github.com/Danipulok/herdr-mods/commit/1d5b07b514ffcd241f1381db64604cf7df5f6146))
+* **folders:** read each host value once per render and label folders on a timer, so a render stays under the 50 ms budget ([c8eaa3d](https://github.com/Danipulok/herdr-mods/commit/c8eaa3d37a1a34adfdbf6326855b011c1e539e86))
+* **toast-filter:** pin the body line height so its second line is not clipped ([c8c8522](https://github.com/Danipulok/herdr-mods/commit/c8c8522a5620a7d3320c0b3f94a46738fec1c332))
+* **toast-filter:** wrap the body onto two lines and show all of it on hover ([2e4478f](https://github.com/Danipulok/herdr-mods/commit/2e4478fb69521dadb4d2c0a13cd126b28d0d9b3f))
+
 ## [1.4.0](https://github.com/Danipulok/herdr-mods/compare/v1.3.0...v1.4.0) (2026-11-18)
 
 
