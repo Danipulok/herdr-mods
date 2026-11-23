@@ -24,6 +24,7 @@ _IMAGE: Final[re.Pattern[str]] = re.compile(r'<img src="docs/(?P<src>[^"]+)"(?: 
 _FEATURE_POINTER: Final[re.Pattern[str]] = re.compile(r"See (?P<name>Folders|Spaces|Archive|Agents|Updates)\.")
 _LINKS: Final[tuple[tuple[str, str], ...]] = (
     ("(#requirements)", "(install.md#requirements)"),
+    ("(#configuration)", "(configuration.md)"),
     ("(RECIPE.md)", "(recipe.md)"),
 )
 

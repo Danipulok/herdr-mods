@@ -5,7 +5,9 @@
 
 Three mods and a layout for the [Herdr](https://herdr.dev) desktop app (`herdr-app`): a spaces list with folders, and an agents list that shows what a Claude Code agent still runs in the background and holds its finish alert until it really finished.
 
-Listed in the [Herdr gallery](https://herdr.dev/gallery/) under Community. Documentation: https://danipulok.github.io/herdr-mods/
+Listed in the [Herdr gallery](https://herdr.dev/gallery/) under Community.
+
+Documentation: https://danipulok.github.io/herdr-mods/, with pages for [Features](https://danipulok.github.io/herdr-mods/features/), [Configuration](https://danipulok.github.io/herdr-mods/configuration/), [Setup](https://danipulok.github.io/herdr-mods/install/) and the [Recipe](https://danipulok.github.io/herdr-mods/recipe/).
 
 # Short instructions for your AI agent
 
@@ -55,12 +57,12 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - Edit folder:
   - Name.
   - Start new spaces in: the directory its `+` and New space here open a space in, with Choose… and path completion. A path that is not a directory shows an error.
-  - Collect spaces from: comma-separated rules. `~` is any home, `*` is one directory name, a bare name (`web`) matches at any depth, the deepest match wins. It follows the start folder until you edit it.
+  - Collect spaces from: comma-separated rules, explained with examples under [Configuration](#configuration). It follows the start folder until you edit it.
   - Color: the presets and grey, a `#rrggbb` field, and hue, saturation and lightness sliders, each track drawn in the colors it gives.
   - Restoring a Claude Code chat from the archive: as every folder, resume it, or start a new one; and the same for every folder.
   - Tab and Shift+Tab move between fields; Up, Down and Tab pick a completion.
 - Delete a folder and its spaces go where the other folders' rules put them.
-- The folders live in `~/.config/herdr-space-folders.json`, the file [herdr-space-folders](https://github.com/jankeesvw/herdr-space-folders) uses, so folders made with that mod show up here. A newer file on disk wins, and the file is re-read every 15 seconds and on change.
+- The folders live in the file [herdr-space-folders](https://github.com/jankeesvw/herdr-space-folders) uses, so folders made with that mod show up here; its path is under [Configuration](#configuration).
 
 </details>
 
@@ -86,10 +88,13 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 <details>
 <summary><b>Archive</b>: put a space away with its tabs, restore it later</summary>
 
+<img src="docs/features/archive.png" width="300" alt="An open Archive row listing two archived spaces with their age, the hovered one showing its restore button">
+<img src="docs/features/archive-menu.png" width="425" alt="The right-click menu of an archived space: Restore, resume the chat; Restore with a new chat; Delete">
+
 - Archive a space from its right-click menu, the hover button, or `ctrl-shift-w` / `cmd-shift-w`. Each tab's name, directory and Claude Code session are recorded, then the space closes.
-- A folder ends with an `Archive N` row. Open, it lists the archived spaces newest first with their age (`5h`, `3d`); see the Spaces screenshot. Archiving or restoring a space folds it.
+- A folder ends with an `Archive N` row. Open, it lists the archived spaces newest first with their age (`5h`, `3d`). Archiving or restoring a space folds it.
 - Hover an archived row for its restore button, Shift-click it to restore the other way; right-click it for both restores and Delete.
-- Restore checks each directory still exists, opens the space and its tabs, and where a session was recorded runs `claude --resume <session>`, or a new `claude` in the folder the tab was in. Which one: the space's own choice, else its folder's, else the one for every folder (resume by default). Set them in Edit space…, in Edit folder…, or by right-clicking the `Archive` row. Sessions come from ccgram, see [Requirements](#requirements).
+- Restore checks each directory still exists, opens the space and its tabs, and where a session was recorded runs `claude --resume <session>`, or a new `claude` in the folder the tab was in. Which one is set per space, per folder or for every folder, as [Configuration](#configuration) shows. Sessions come from ccgram, see [Requirements](#requirements).
 
 </details>
 
@@ -110,7 +115,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - Hover a row to pin it. Pinned agents go into a Pinned group on top, the same pins herdr-t3's inbox uses.
 - Click a row to focus the agent.
 - A finish alert (toast and sound) waits 3 seconds and is dropped if by then the agent works again, you looked at it, or its footer shows a shell, a monitor or a workflow still running: Claude Code often finishes a turn and starts the next at once. Needs the Herdr version under Requirements.
-- Every notification, gone in a few seconds on screen, stays in `~/.local/state/herdr-mods/notifications.jsonl` (under `$XDG_STATE_HOME` when set), one JSON line each, while the layout draws them with `toast-filter` (`my-t3` does). Each held finish alert adds a line saying whether it rang, and if not, why, and an error banner a mod of this repo flashes adds its message and stack.
+- Every notification, gone in a few seconds on screen, stays in a log file, one JSON line each (its path is under [Configuration](#configuration)), while the layout draws them with `toast-filter` (`my-t3` does). Each held finish alert adds a line saying whether it rang, and if not, why, and an error banner a mod of this repo flashes adds its message and stack.
 
 </details>
 
@@ -121,7 +126,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 
 - Every 6 hours the folders mod asks GitHub for the newest release (`api.github.com`, no token) and compares it with the installed version.
 - When a newer one is out, a toast at the bottom right says so, at most once a day. Click it for the update dialog.
-- Update downloads that release into `~/.cache/herdr-mods/<version>` (or `$XDG_CACHE_HOME/herdr-mods`) and runs its `just deploy`; it needs `curl` and `tar` besides the [requirements](#requirements). A toast says when the new version is running.
+- Update downloads that release into a cache directory (its path is under [Configuration](#configuration)) and runs its `just deploy`; it needs `curl` and `tar` besides the [requirements](#requirements). A toast says when the new version is running.
 - If that fails, or with Use an agent, the dialog shows a prompt to give an agent in a new space, with Copy and Copy and open a new space.
 - Stop checking turns the checks off; `herdr-app do folders.check-updates` turns them on again and checks at once.
 
@@ -145,6 +150,72 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 </details>
 <!-- --8<-- [end:features] -->
 
+## Configuration
+
+<!-- --8<-- [start:configuration] -->
+### Folder rules
+
+A folder collects every space working in a directory its rules match; when several folders match, the rule reaching deepest wins, so `~/code/acme` beats `~/code/*`. Set the rules in Edit folder…, under Collect spaces from, separated by commas. Each rule takes the directory and everything under it.
+
+| Rule | Collects spaces working in |
+| --- | --- |
+| `~/code/acme` | `~/code/acme`, in any home (`/home/<user>`, `/Users/<user>`, `/root`) |
+| `~/code/client-*` | `~/code/client-a`, `~/code/client-b`: `*` is any one directory name |
+| `web` | a directory named `web` at any depth, since it starts with neither `/` nor `~` |
+| `/srv/sites` | that absolute path |
+| `vm-*` | also another machine whose name matches, with all its spaces |
+
+A space dragged into a folder by hand stays there, whatever the rules say. A folder without rules follows its start folder.
+
+### Restoring chats
+
+<img src="docs/features/space-edit.png" width="350" alt="The Edit space dialog: name, folder, color, and how its Claude Code chat restores, for it and for every folder">
+<img src="docs/features/archive-restore.png" width="340" alt="The right-click menu of an Archive row: how chats restore in this folder and in every folder">
+
+A restored tab that had a Claude Code session either resumes it (`claude --resume <session>`, with ccgram, see [Requirements](#requirements)) or starts a new `claude` in the directory the tab was in. The most specific choice set wins:
+
+| Choice of | Set it in |
+| --- | --- |
+| The space | Edit space… in the space's right-click menu; taken when the space is archived |
+| Its folder | Edit folder…, or the right-click menu of the folder's `Archive` row |
+| Every folder | Either dialog, or the right-click menu of any `Archive` row; resume unless set |
+
+Shift-click a restore button, or pick from an archived space's right-click menu, to restore the other way once.
+
+### Keys
+
+The layout's keys sit in the `layout:my-t3` section of the app's `keys.json` (path under [Files](#files)); the table under Keys lists them. The mods' commands are `folders.next`, `folders.prev`, `folders.archive` and `folders.new`. To add a key of your own:
+
+```json
+{
+  "layout:my-t3": {
+    "alt-j": "folders.next",
+    "alt-k": "folders.prev"
+  }
+}
+```
+
+`just deploy`, which Update runs too, merges this repo's `keys.json` over the app's: a key named there gets its command back, and every other key you added stays.
+
+### Done sound
+
+`agent-list` rings a finish alert with Herdr's own done sound, `mods/agent-list/done.mp3`, once the agent stayed done, so the repo's `settings.json` points Herdr's done sound at a silent file. Turning sounds off in Herdr's settings (`sounds.enabled` set to `false`) silences it too. With a done sound of your own set in Settings > Alerts, `just deploy` leaves `settings.json` alone and finish alerts ring at once; clear it there to get them held.
+
+### Update checks
+
+Switched off in the update dialog and on again from the command line. See Updates.
+
+### Files
+
+| Path | Holds |
+| --- | --- |
+| `~/.config/herdr-space-folders.json` | Folders, rules, colors, restore choices and archived spaces; re-read every 15 seconds and on change, and a newer file on disk wins |
+| `~/.config/herdr-app/` (or `$XDG_CONFIG_HOME/herdr-app`) | The deployed mods and layout, `keys.json`, `settings.json` |
+| `~/.local/state/herdr-mods/notifications.jsonl` (or `$XDG_STATE_HOME/herdr-mods`) | The notification log, one JSON line each. See Agents. |
+| `~/.cache/herdr-mods/<version>` (or `$XDG_CACHE_HOME/herdr-mods`) | Releases Update downloaded |
+| `~/.ccgram/session_map.json` | ccgram's Claude Code sessions, read when a space is archived |
+<!-- --8<-- [end:configuration] -->
+
 <!-- --8<-- [start:install] -->
 ## Requirements
 
@@ -163,7 +234,7 @@ just deploy
 herdr-app do layout.switch --name my-t3
 ```
 
-`just deploy` loads each mod once with `herdr-app check`, copies the mods and the layout into `~/.config/herdr-app` (or `$XDG_CONFIG_HOME/herdr-app`) and merges `keys.json` into the app's `keys.json` and, on the Herdr version held finish alerts need and unless you set your own done sound, `settings.json` into the app's `settings.json`. A running app picks up a deployed mod at once, with no restart. Run `just deploy` again after a `git pull` to update.
+`just deploy` loads each mod once with `herdr-app check`, copies the mods and the layout into the app's folder (its path is under [Configuration](#configuration)) and merges `keys.json` into the app's `keys.json` and, on the Herdr version held finish alerts need and unless you set your own done sound, `settings.json` into the app's `settings.json`. A running app picks up a deployed mod at once, with no restart. Run `just deploy` again after a `git pull` to update.
 
 ## Undo
 

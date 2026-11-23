@@ -12,6 +12,7 @@ hooks:
 nav:
   - Home: index.md
   - Features: features.md
+  - Configuration: configuration.md
   - Setup: install.md
   - Recipe: recipe.md
 
