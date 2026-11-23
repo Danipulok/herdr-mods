@@ -1,10 +1,10 @@
 # herdr-mods
 
+<img src="docs/banner.png" alt="herdr-mods: spaces in colored folders, agents sorted by what needs you">
+
 Three mods and a layout for the [Herdr](https://herdr.dev) desktop app (`herdr-app`): a spaces list with folders, and an agents list that shows what a Claude Code agent still runs in the background and holds its finish alert until it really finished.
 
 Listed in the [Herdr gallery](https://herdr.dev/gallery/) under Community.
-
-<img src="docs/screenshot.png" width="300" alt="The folders list above the agents list, in the my-t3 layout">
 
 # Short instructions for your AI agent
 
@@ -100,6 +100,8 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 <details>
 <summary><b>Updates</b>: a toast when a new release is out, installed by one button</summary>
 
+<img src="docs/features/update.png" width="500" alt="The update dialog: Stop checking, Use an agent, Update">
+
 - Every 6 hours the folders mod asks GitHub for the newest release (`api.github.com`, no token) and compares it with the installed version.
 - When a newer one is out, a toast at the bottom right says so, at most once a day. Click it for the update dialog.
 - Update downloads that release into `~/.cache/herdr-mods/<version>` (or `$XDG_CACHE_HOME/herdr-mods`) and runs its `just deploy`; it needs `curl` and `tar` besides the [requirements](#requirements). A toast says when the new version is running.
@@ -127,7 +129,7 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 
 ## Requirements
 
-- The Herdr desktop app with its `herdr-app` CLI. Tested with `herdr-app 0.1.14`; held finish alerts need `herdr-app 0.1.16`, whose layouts name their toast mod; on older versions alerts stay immediate.
+- The Herdr desktop app with its `herdr-app` CLI. Tested with `herdr-app 0.1.17`; held finish alerts need `herdr-app 0.1.16`, whose layouts name their toast mod; on older versions alerts stay immediate.
 - The `t3-*` mods of [herdr-t3](https://github.com/JinJieBeWater/herdr-t3), installed as its README says: the layout uses its `t3-chrome`, `t3-tabs` and `t3-inbox` mods.
 - [`just`](https://github.com/casey/just) and [`jq`](https://jqlang.org).
 
