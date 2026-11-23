@@ -360,6 +360,16 @@ function dialogParts(t) {
   return { button, field, choice };
 }
 
+// A right-click menu's row, led by an icon, a check mark column or nothing; a click closes the menu first.
+function menuItem(t, overlay, key, label, action, { icon = null, checked = null, tone = null } = {}) {
+  return h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
+    .when(Boolean(tone), (el) => el.text_color(tone))
+    .hover((el) => el.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
+    .when(Boolean(icon), (el) => el.child(svg(icon).size(13).flex_none().text_color(tone ?? t.muted)))
+    .when(checked !== null, (el) => el.child(div().w(13).flex_none().text_color(t.muted).child(checked ? "✓" : "")))
+    .child(label);
+}
+
 // A space's own color, or null to let the least used one be picked again.
 function paintSpace(space, machine, color) {
   const colorId = localId(space);
@@ -397,27 +407,14 @@ export default class Spaces extends View {
       this.mirror = !f.match || f.match === f.path;
       this.path.on("change", (_e, cx) => { if (this.mirror) { this.match.set_value(this.path.value()); cx.notify(); } });
       this.match.on("change", () => { this.mirror = this.match.value() === this.path.value(); });
-      // Hints answer the field being typed in: the rules following the start folder ask nothing.
-      this.focused = "name";
-      this.hints = [];
-      this.hintFor = null;
-      this.hintAt = 0;
-      this.hintSeq = 0;
-      this.problem = null;
-      for (const field of FIELDS) {
-        this[field].on("focus", (_e, cx) => { this.focused = field; cx.notify(); });
-        this[field].on("change", (_e, cx) => { this.problem = null; if (this.focused === field && field !== "name") this.suggest(field, cx); });
-      }
       // The name follows the start folder's last part while it's still the default
       // (or already that part); typing a name of its own stops that.
       const named = (n) => !n || n === NEW_FOLDER || n === lastPart(this.path.value());
       this.nameMirror = named(this.name.value());
       this.path.on("change", (_e, cx) => { this.follow(); cx.notify(); });
       this.name.on("change", () => { this.nameMirror = named(this.name.value()); });
-      for (const field of FIELDS) this[field].on("submit", (_e, cx) => this.saveFolder(cx));
       this.name.set_selected_range({ start: 0, end: this.name.value().length });
-      this.name.focus();
-      cx.timer.after(300, () => this.name.focus());
+      this.dialogFields("name", (cx) => this.saveFolder(cx), cx);
       return;
     }
     this.overFolder = null;
@@ -622,7 +619,7 @@ export default class Spaces extends View {
     const shown = folders(machine).list.some((x) => x.id === folder) ? folder : null;
     if (!this.openArchives.delete(`${machine ?? ""}/${shown ?? ""}`)) return;
 
-    localStorage.setItem("archive.open", JSON.stringify([...this.openArchives]));
+    this.saveOpenArchives();
     cx.notify();
   }
 
@@ -942,7 +939,12 @@ export default class Spaces extends View {
     this.chosenMode = space ? folders(machine).restores?.[localId(space)] ?? null : null;
     this.chosenEvery = everyMode();
     this.colorState(space ? folders(machine).colors?.[localId(space)] ?? null : null, fillOf(shared("space.colors")?.[id] ?? "ansi6"));
-    this.focused = "path";
+    this.dialogFields("path", (cx) => this.saveSpace(cx), cx);
+  }
+
+  // Both dialogs' text fields: hints answer the field being typed in, except the name; Enter saves.
+  dialogFields(focused, save, cx) {
+    this.focused = focused;
     this.hints = [];
     this.hintFor = null;
     this.hintAt = 0;
@@ -952,11 +954,11 @@ export default class Spaces extends View {
     for (const field of this.fields) {
       this[field].on("focus", (_e, cx) => { this.focused = field; cx.notify(); });
       this[field].on("change", (_e, cx) => { this.problem = null; if (this.focused === field && field !== "name") this.suggest(field, cx); });
-      this[field].on("submit", (_e, cx) => this.saveSpace(cx));
+      this[field].on("submit", (_e, cx) => save(cx));
     }
 
-    this.path.focus();
-    cx.timer.after(300, () => this.path.focus());
+    this[focused].focus();
+    cx.timer.after(300, () => this[focused].focus());
   }
 
   // The folder the space's last Claude Code session started in, which `hc-resume.py`
@@ -1183,7 +1185,7 @@ export default class Spaces extends View {
       .on_mouse_up("left", (_e, cx) => {
         if (this.pressed !== null) this.drop(this.pressed, f.id);
         else if (this.moving && this.moving.id !== f.id && this.overMove === f.id) this.reorder(machine, this.moving.id, f.id);
-        this.pressed = null; this.over = null; this.overFolder = null; this.moving = null; this.overMove = null;
+        this.endDrag();
         cx.notify();
       })
       .on_click(() => this.toggleFolder(machine, f.id))
@@ -1206,8 +1208,7 @@ export default class Spaces extends View {
 
   folderMenuView(t) {
     const { id, machine, overlay } = this.folderMenu;
-    const item = (key, label, action) => div().id(key).h(30).px(10).flex().items_center().rounded(6).cursor_pointer()
-      .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); }).child(label);
+    const item = (key, label, action) => menuItem(t, overlay, key, label, action);
     const current = folders(machine).list.find((x) => x.id === id)?.color ?? null;
     const swatch = (color) => div().id(`folder-color-${color ?? "grey"}`).size(20).flex_none().rounded(10).cursor_pointer()
       .bg(color ? MARK[color] : t.dim).border_2().border_color(color === current ? t.foreground : t.popover)
@@ -1239,10 +1240,7 @@ export default class Spaces extends View {
       .bg(color ? MARK[color] : t.input).border_2().border_color(color === current ? t.foreground : t.popover)
       .hover((el) => el.border_color(t.muted)).on_click(() => paint(color))
       .when(!color, (el) => el.flex().items_center().justify_center().child(svg("mods/folders/auto.svg").size(12).text_color(t.muted)));
-    const item = (key, label, icon, action, tone = null) => h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
-      .when(Boolean(tone), (el) => el.text_color(tone))
-      .hover((el) => el.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
-      .child(svg(`mods/workspace-chrome/${icon}.svg`).size(13).flex_none().text_color(tone ?? t.muted)).child(label);
+    const item = (key, label, icon, action, tone = null) => menuItem(t, overlay, key, label, action, { icon: `mods/workspace-chrome/${icon}.svg`, tone });
     const worktree = (action, size) => () => openOverlay({ mod: "worktree", kind: "dialog", ...size, props: { space: id, action } });
     return v_flex().id("space-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(h_flex().px(8).pt(6).pb(8).gap(6).items_center().children([...Object.keys(MARK), null].map(swatch)))
@@ -1305,10 +1303,7 @@ export default class Spaces extends View {
   archivedMenuView(t) {
     const { id, machine, overlay } = this.archivedMenu;
     const entry = (folders(machine).archive ?? []).find((x) => x.id === id);
-    const item = (key, label, icon, action, tone = null) => h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
-      .when(Boolean(tone), (el) => el.text_color(tone))
-      .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); if (entry) action(); })
-      .child(svg(icon).size(13).flex_none().text_color(tone ?? t.muted)).child(label);
+    const item = (key, label, icon, action, tone = null) => menuItem(t, overlay, key, label, () => { if (entry) action(); }, { icon, tone });
     const mode = entry ? restoreMode(machine, entry) : "resume";
     const restoreItem = (key, choice) => item(key, RESTORE_LABEL[choice], "mods/folders/archive-restore.svg", () => sidebarJob({ do: "restore", machine, id, mode: choice }));
     return v_flex().id("archived-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
@@ -1322,9 +1317,7 @@ export default class Spaces extends View {
     const { folder, machine, overlay } = this.archiveMenu;
     const own = folders(machine).list.find((x) => x.id === folder)?.restore ?? null, every = everyMode();
     const heading = (label) => div().px(10).pt(6).pb(2).text_size(11.5).text_color(t.dim).child(label);
-    const item = (key, label, chosen, action) => h_flex().id(key).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer()
-      .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
-      .child(div().w(13).flex_none().text_color(t.muted).child(chosen ? "✓" : "")).child(label);
+    const item = (key, label, chosen, action) => menuItem(t, overlay, key, label, action, { checked: chosen });
     return v_flex().id("archive-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .when(Boolean(folder), (el) => el
         .child(heading("Restoring in this folder"))
@@ -1619,9 +1612,17 @@ export default class Spaces extends View {
       (cx, click) => this.restore(machine, e, click.modifiers.shift ? other : mode, cx)).tooltip(label);
   }
 
+  saveOpenArchives() {
+    localStorage.setItem("archive.open", JSON.stringify([...this.openArchives]));
+  }
+
+  endDrag() {
+    this.pressed = null; this.over = null; this.overFolder = null; this.moving = null; this.overMove = null;
+  }
+
   toggleArchive(at, cx) {
     this.openArchives.has(at) ? this.openArchives.delete(at) : this.openArchives.add(at);
-    localStorage.setItem("archive.open", JSON.stringify([...this.openArchives]));
+    this.saveOpenArchives();
     cx.notify();
   }
 
@@ -1685,7 +1686,7 @@ export default class Spaces extends View {
         // Released anywhere but on a space or a folder: out of its folder.
         .on_mouse_up("left", (_e, cx) => {
           if (this.pressed !== null) this.drop(this.pressed, null);
-          this.pressed = null; this.over = null; this.overFolder = null; this.moving = null; this.overMove = null;
+          this.endDrag();
           cx.notify();
         })
         .child(v_flex().id("space-content").w_full().flex_none().px(8).pb(8)
