@@ -1,2 +1,6 @@
+# Editor type declarations `herdr-app check` writes into every mod folder.
 gpui-kit.d.ts
 jsconfig.json
+
+# The docs site `just docs-build` writes.
+/site/

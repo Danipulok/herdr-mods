@@ -10,6 +10,7 @@ The [Herdr T3](https://github.com/JinJieBeWater/herdr-t3) window with two lists 
 Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, with the requirements its README lists
 ```
 
+<!-- --8<-- [start:recipe] -->
 ## What you see
 
 The window is herdr-t3's, as its [recipe](https://github.com/JinJieBeWater/herdr-t3/blob/8b8506341a3aa285041f32e757bd48ef67c916bb/RECIPE.md) describes: brand bar, sidebar, tabs, panes, agent view. Only the two lists in the sidebar's Lists half differ, split 1:1, each at least 90px.
@@ -74,3 +75,4 @@ The window is herdr-t3's, as its [recipe](https://github.com/JinJieBeWater/herdr
 - `ctrl-shift-w` archives the front space, and its `Archive 1` row restores it with the same tabs.
 - An agent asking a question shows under `Needs you` with the `!` badge. A Claude Code agent with a background shell shows `1 shell` once idle.
 - A Claude Code agent that finishes unseen and stays done rings 3s later with one toast and one sound; one that starts its next turn within 3s, or finishes with `sleep 30 &` running, rings nothing.
+<!-- --8<-- [end:recipe] -->

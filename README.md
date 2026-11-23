@@ -1,10 +1,11 @@
 # herdr-mods
 
+<!-- --8<-- [start:overview] -->
 <img src="docs/banner.png" alt="herdr-mods: spaces in colored folders, agents sorted by what needs you">
 
 Three mods and a layout for the [Herdr](https://herdr.dev) desktop app (`herdr-app`): a spaces list with folders, and an agents list that shows what a Claude Code agent still runs in the background and holds its finish alert until it really finished.
 
-Listed in the [Herdr gallery](https://herdr.dev/gallery/) under Community.
+Listed in the [Herdr gallery](https://herdr.dev/gallery/) under Community. Documentation: https://danipulok.github.io/herdr-mods/
 
 # Short instructions for your AI agent
 
@@ -22,9 +23,11 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - `settings.json` points Herdr's done sound at a silent file, since `agent-list` plays it.
 
 [`RECIPE.md`](RECIPE.md) describes the same features in the form an agent rebuilds them from: sizes, colors and the commands each mod runs.
+<!-- --8<-- [end:overview] -->
 
 ## Use cases
 
+<!-- --8<-- [start:use-cases] -->
 - **Many projects in one window**: a folder per client or area collects every space working under its directories, and a new space opens in the folder's own start directory. See Folders.
 - **Branches side by side**: open a worktree from a space's menu; it sits under its checkout with its branch and folds with it. See Spaces.
 - **Putting work away for later**: archive a space at the end of the day and restore it with its tabs, each Claude Code chat resumed or started fresh as you set per space, per folder or for all. See Archive.
@@ -33,9 +36,11 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 - **Agents on other machines**: their spaces get a header of their own, or join the local folder whose rules match them. See Spaces.
 - **Chat bridges that group by project**: each agent terminal carries its folder's name as a Herdr label, for a bridge naming its topics. See Spaces.
 - **Staying up to date**: a toast says when a release is out, and one button installs it. See Updates.
+<!-- --8<-- [end:use-cases] -->
 
 ## Features
 
+<!-- --8<-- [start:features] -->
 <details>
 <summary><b>Folders</b>: name, color, rules that collect spaces, a start folder</summary>
 
@@ -138,7 +143,9 @@ Read https://github.com/Danipulok/herdr-mods and install it into my Herdr app, w
 | `ctrl-shift-t` | New tab |
 
 </details>
+<!-- --8<-- [end:features] -->
 
+<!-- --8<-- [start:install] -->
 ## Requirements
 
 - The Herdr desktop app with its `herdr-app` CLI. Tested with `herdr-app 0.1.17`; held finish alerts need `herdr-app 0.1.16`, whose layouts name their toast mod; on older versions alerts stay immediate.
@@ -193,3 +200,4 @@ Your folders stay in `~/.config/herdr-space-folders.json`. Delete that file too 
 Herdr's code and `herdr-t3` are under the Apache License 2.0 (`licenses/Apache-2.0`). The folders code of `herdr-space-folders` is MIT (`licenses/space-folders-MIT`).
 
 To bring in an upstream change, diff the upstream file from the commit in the table to its new head and apply the hunks, then update the table.
+<!-- --8<-- [end:install] -->

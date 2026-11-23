@@ -3,6 +3,7 @@ set shell := ["bash", "-uc"]
 herdr := env("XDG_CONFIG_HOME", env("HOME") / ".config") / "herdr-app"
 # A layout names its toast mod only from this Herdr on; before it a silent done sound would mute every finish.
 held_alerts_from := "0.1.16"
+mkdocs := "uvx --from mkdocs==1.6.1 --with mkdocs-material==9.8.2 mkdocs"
 
 [doc("Show the recipes")]
 default:
@@ -14,6 +15,16 @@ lint:
     for mod in mods/*/; do herdr-app check "$mod"; done
     cmp mods/toast-filter/handoff.js mods/agent-list/handoff.js
     cmp mods/toast-filter/handoff.js mods/folders/handoff.js
+
+[group("docs")]
+[doc("Build the docs site into site/, failing on any warning")]
+docs-build:
+    {{ mkdocs }} build --strict
+
+[group("docs")]
+[doc("Serve the docs site with live reload")]
+docs-serve:
+    {{ mkdocs }} serve
 
 [group("deploy")]
 [doc("Copy the mods and the layout into the herdr-app home, merge the layout's keys and, on a Herdr that holds finish alerts, the sound settings")]

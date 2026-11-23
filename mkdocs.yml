@@ -1,0 +1,44 @@
+site_name: herdr-mods
+site_description: Spaces in colored folders and agents sorted by what needs you, for the Herdr desktop app
+site_url: https://danipulok.github.io/herdr-mods/
+repo_url: https://github.com/Danipulok/herdr-mods
+repo_name: Danipulok/herdr-mods
+edit_uri: ""
+
+# The pages include sections of `README.md` and `RECIPE.md`, which stay the one source, and the hook expands them and adapts their GitHub markup.
+hooks:
+  - mkdocs_hooks.py
+
+nav:
+  - Home: index.md
+  - Features: features.md
+  - Setup: install.md
+  - Recipe: recipe.md
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: teal
+    accent: teal
+  features:
+    - content.code.copy
+    - navigation.instant
+    - search.highlight
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+
+  - attr_list
+
+  - md_in_html
+
+  - tables
+
+  - toc:
+      permalink: true
+
+  - pymdownx.highlight
+
+  - pymdownx.superfences
