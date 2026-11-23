@@ -13,9 +13,40 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, SliderState, Slider, SliderTrack, SliderIndicator, SliderThumb } from "gpui-base";
-import { spaces, agents, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand, notify } from "herdr";
+import * as herdr from "herdr";
+import { run, openOverlay, closeOverlay, props, exec, hc, theme, watchFolder, window, pickFolder, home, nextCommand, notify } from "herdr";
 import { recordFailures } from "./handoff.js";
 import { UPDATE, announceInstalled, checkUpdate, install, startChecking, stopChecking, updatePrompt } from "./update.js";
+
+// Each host read copies its value out of Herdr, and a render read the folders 61 times, spaces and
+//  panes once per section and the colors once per row: on a loaded machine that took a render past
+//  the shell's 50 ms budget, which interrupts it and shows the error banner over the sidebar.
+//  https://github.com/herdrdev/herdr-app/blob/034f8b85f7e6bb71f8ff55cb4a80c548b2578c0f/vendor/gpui-kit/crates/shell/src/engine/quickjs/sandbox.rs#L436-L441
+//  So within one render, or one pass of a timer, every value is read once.
+let frame = null;
+const once = (name, read) => {
+  if (!frame) return read();
+  if (!frame.has(name)) frame.set(name, read());
+  return frame.get(name);
+};
+const readingOnce = (work) => {
+  frame = new Map();
+  try {
+    return work();
+  } finally {
+    frame = null;
+  }
+};
+const spaces = () => once("spaces", herdr.spaces);
+const agents = () => once("agents", herdr.agents);
+const panes = () => once("panes", herdr.panes);
+const machines = () => once("machines", herdr.machines);
+const layout = () => once("layout", herdr.layout);
+const shared = (name) => once(`shared ${name}`, () => herdr.shared(name));
+const setShared = (name, value) => {
+  frame?.delete(`shared ${name}`);
+  herdr.setShared(name, value);
+};
 
 // A machine's folders live in a file in its home, so every screen showing its
 // spaces shows the same folders: { list: [{ id, name, folded }], of: { spaceId:
@@ -444,6 +475,8 @@ export default class Spaces extends View {
     this.foldedRepos = new Set(JSON.parse(localStorage.getItem("repos.folded") ?? "[]"));
     this.openArchives = new Set(JSON.parse(localStorage.getItem("archive.open") ?? "[]"));
     this.folderLabels = new Map();
+    // Not in the render: reading every agent there took a render past the shell's budget.
+    cx.timer.every(1000, () => readingOnce(() => this.labelFolders(spaces())));
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // Another screen may have changed them: read every machine's file again now and then.
@@ -1641,7 +1674,7 @@ export default class Spaces extends View {
   }
 
   render() {
-    return recordFailures("folders", () => this.draw());
+    return readingOnce(() => recordFailures("folders", () => this.draw()));
   }
 
   draw() {
@@ -1668,7 +1701,6 @@ export default class Spaces extends View {
       changed = true;
     }
     if (changed) setShared("space.colors", kept);
-    this.labelFolders(sp);
     // While a space in a folder is dragged, a place to drop it out of the folder.
     const dragged = this.pressed !== null ? spaces()[this.pressed] : null;
     const leaving = Boolean(dragged && folderOf(dragged, folders(dragged.machine ?? null), panes()));
