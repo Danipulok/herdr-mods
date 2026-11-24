@@ -219,7 +219,7 @@ Switched off in the update dialog and on again from the command line. See Update
 <!-- --8<-- [start:install] -->
 ## Requirements
 
-- The Herdr desktop app with its `herdr-app` CLI. Tested with `herdr-app 0.1.17`; held finish alerts need `herdr-app 0.1.16`, whose layouts name their toast mod; on older versions alerts stay immediate.
+- The Herdr desktop app with its `herdr-app` CLI. Tested with `herdr-app 0.1.18`; held finish alerts need `herdr-app 0.1.16`, whose layouts name their toast mod; on older versions alerts stay immediate.
 - The `t3-*` mods of [herdr-t3](https://github.com/JinJieBeWater/herdr-t3), installed as its README says: the layout uses its `t3-chrome`, `t3-tabs` and `t3-inbox` mods.
 - [`just`](https://github.com/casey/just) and [`jq`](https://jqlang.org).
 
